@@ -373,6 +373,12 @@ mod tests_var_names {
 #[derive(Clone)]
 struct Term(String, Type);
 
+impl Term {
+    fn new(name: &str, t: Type) -> Term {
+       Term(String::from(name), t)
+    }
+}
+
 impl fmt::Display for Term {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
@@ -392,37 +398,73 @@ struct Morphism {
 }
 
 impl Morphism {
+    fn new(name: &str, source: Type, target: Type) -> Morphism {
+        Morphism {
+            name : String::from(name),
+            source : source,
+            target : target
+        }
+    }
+    
     // Create a morphism (.x): ((a -> b) -> b) from the given term x: a such that (.x) g = g x.
-    fn ap(Term(label, typ): Term) -> Morphism {
+    fn ap(Term(label, typ): &Term) -> Morphism {
       let used_var_names = typ.var_names().into_iter().cloned();
       let mut candidates = VarNames::new().exclude_all(used_var_names);
       let nvn = Type::Variable(candidates.next().expect("No available var name."));
       Morphism {
         name: [".", &label].concat(),
-        source: Type::Function(Box::new(typ), Box::new(nvn.clone())),
+        source: Type::Function(Box::new(typ.clone()), Box::new(nvn.clone())),
         target: nvn,
       }
     }
 
     // Create a morphism f: a -> b from a function term a -> b. Return None if the given
     // term is not a function.
-    fn morphism_from_term(Term(label, typ): Term) -> Option<Morphism> {
+    fn from_function(Term(label, typ): &Term) -> Option<Morphism> {
        match typ {
-         Type::Function(a, b) => Some(Morphism{name: label, source: *a, target: *b}),
+         Type::Function(a, b) => Some(Morphism{
+             name: label.clone(),
+             source: *a.clone(),
+             target: *b.clone()
+         }),
          _ => None,
        }
     }
 
-    fn bind_source(self, to: Type) -> Option<Morphism> {
-        self.source.bindings(&to).map(|bindings| {
+    fn bind_source(&self, to: &Type) -> Option<Morphism> {
+        self.source.bindings(to).map(|bindings| {
             Morphism {
-                name: self.name,
-                source: to,
+                name: self.name.clone(),
+                source: to.clone(),
                 target: self.target.bind(bindings)
             }
         })
     }
+
+    fn chain_forward() -> Morphism {
+        Morphism {
+            name: String::from(">"),
+            source: Type::fun(Type::var("a"), Type::var("b")),
+            target: Type::fun(
+                Type::fun(Type::var("b"), Type::var("c")),
+                Type::fun(Type::var("a"), Type::var("c"))
+            )
+        }
+    }
+
+    fn chain_backward() -> Morphism {
+        Morphism {
+            name: String::from("<"),
+            source: Type::fun( Type::var("b"), Type::var("c") ),
+            target: Type::fun(
+                Type::fun( Type::var("a"), Type::var("b") ),
+                Type::fun( Type::var("a"), Type::var("c") )
+            ),
+        }
+    }
 }
+
+
 
 impl fmt::Display for Morphism {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -445,7 +487,7 @@ mod tests_morphism {
            target: Type::var("a")
        };
        let to = Type::var("b");
-       let result = m.bind_source(to);
+       let result = m.bind_source(&to);
        let expect = Some(Morphism{
            name: String::from("f"),
            source: Type::var("b"),
@@ -459,7 +501,7 @@ mod tests_morphism {
            target: Type::var("b")
        };
        let to = Type::var("b");
-       let result = m.bind_source(to);
+       let result = m.bind_source(&to);
        let expect = Some(Morphism{
            name: String::from("f"),
            source: Type::var("b"),
@@ -475,7 +517,7 @@ mod tests_morphism {
                Type::fun(Type::var("a"), Type::var("c")))
        };
        let to = Type::fun(Type::var("x"), Type::var("y"));
-       let result = m.bind_source(to);
+       let result = m.bind_source(&to);
        let expect = Some(Morphism{
            name: String::from("f"),
            source: Type::fun(Type::var("x"), Type::var("y")),
@@ -487,130 +529,107 @@ mod tests_morphism {
     }
 }
 
+fn morphisms_from_terms(terms: &Vec<Term>) -> Vec<Morphism> {
+      terms.iter().map(|t| Morphism::ap(t))
+      .chain(terms.iter().filter_map(|t| Morphism::from_function(t)))
+      .chain(iter::once(Morphism::chain_forward()))
+      .chain(iter::once(Morphism::chain_backward()))
+      .collect()
+}
 
-// TODO
-// fn edges(n: Type, morphisms: &Vec<Morphism>) -> Vec<Morphism> {
-//    morphisms.iter().filter_map(|m| {
-//         substitute(&m.source, &n, m.target.clone()).map(|t|
-//            Morphism{
-//              name: m.name.clone(),
-//              source: n.clone(),
-//              target: t,
-//            },
-//         )
-//    }).collect()
-// }
+
+fn edges(n: &Type, morphisms: &Vec<Morphism>) -> Vec<Morphism> {
+   morphisms.iter().filter_map(|m: &Morphism| -> Option<Morphism> {
+       m.bind_source(n)
+   }).collect()
+}
+
+
+#[cfg(test)]
+mod tests_edges {
+    use super::*;
+
+    #[test]
+    fn test_edges() {
+        let terms: Vec<Term> = vec!
+          [ Term::new("1", Type::Nat)
+          , Term::new("1", Type::Int)
+          , Term::new("f", Type::fun(Type::Nat,Type::Int))
+          , Term::new("g", Type::fun(Type::var("a"), Type::var("b")))
+          ];
+
+        let morphisms = morphisms_from_terms(&terms);
+
+        let n = Type::Nat;
+        assert_eq!(
+            edges(&n, &morphisms),
+            vec![Morphism::new("f", Type::Nat, Type::Int),
+                 Morphism::new("g", Type::Nat, Type::var("b"))]
+        );
+
+        let n = Type::fun(Type::var("a"), Type::var("b"));
+        assert_eq!(
+            edges(&n, &morphisms),
+            vec![Morphism::new("g", Type::fun(Type::var("a"), Type::var("b")), Type::var("b")),
+                 Morphism::new(">",
+                     Type::fun(Type::var("a"), Type::var("b")),
+                     Type::fun(
+                         Type::fun(Type::var("b"), Type::var("c")),
+                         Type::fun(Type::var("a"), Type::var("c"))
+                     )
+                 ),
+                 Morphism::new("<",
+                     Type::fun(Type::var("a"), Type::var("b")),
+                     Type::fun(
+                         Type::fun(Type::var("c"), Type::var("a")),
+                         Type::fun(Type::var("c"), Type::var("b"))
+                     )
+                 )
+             ]
+        );
+
+        let n = Type::fun(Type::Int, Type::Int);
+        assert_eq!(
+            edges(&n, &morphisms),
+            vec![Morphism::new(".1", Type::fun(Type::Int, Type::Int), Type::Int),
+                 Morphism::new("g", Type::fun(Type::Int, Type::Int), Type::var("b")),
+                 Morphism::new(">",
+                     Type::fun(Type::Int, Type::Int),
+                     Type::fun(
+                         Type::fun(Type::Int, Type::var("c")),
+                         Type::fun(Type::Int, Type::var("c"))
+                     )
+                 ),
+                 Morphism::new("<",
+                     Type::fun(Type::Int, Type::Int),
+                     Type::fun(
+                         Type::fun(Type::var("a"), Type::Int),
+                         Type::fun(Type::var("a"), Type::Int)
+                     )
+                 )
+             ]
+        );
+    }
+}
 
 
 fn main() {
 
-  let concrete_function_type = Type::Function(
-            Box::new(Type::Nat),
-            Box::new(Type::Int)
-          );
-  let generic_function_type =
-        Type::Function(
-          Box::new(Type::Variable(String::from("a"))),
-          Box::new(Type::Variable(String::from("b")))
-        );
-
-  let a_type =
-      Term(
-        String::from("g"),
-        Type::Function(
-          Box::new(Type::Variable(String::from("a"))),
-          Box::new(Type::Variable(String::from("b")))
-        )
-      );
-  let mut candidates = VarNames::new().exclude_all(a_type.1.var_names().into_iter().cloned());
-  let nfv = candidates.next().expect("No new var name");
-  println!("New free var: {} (given {})", nfv, a_type);
-
-
   let terms: Vec<Term> = vec!
-      [ Term(String::from("1"), Type::Nat)
-      , Term(String::from("1"), Type::Int)
-      , Term(
-          String::from("f"),
-          Type::Function(
-            Box::new(Type::Nat),
-            Box::new(Type::Int)
-          )
-        )
-      , Term(
-          String::from("g"),
-          Type::Function(
-            Box::new(Type::Variable(String::from("a"))),
-            Box::new(Type::Variable(String::from("b")))
-          )
-        )
+      [ Term::new("1", Type::Nat)
+      , Term::new("1", Type::Int)
+      , Term::new("f", Type::fun(Type::Nat,Type::Int))
+      , Term::new("g", Type::fun(Type::var("a"), Type::var("b")))
       ];
 
   for t in terms.iter() {
     println!("Term: {}", t);
   }
 
-  let chain_forward_morphism = Morphism {
-      name: String::from(">"),
-      source: Type::Function(
-        Box::new(Type::Variable(String::from("a"))),
-        Box::new(Type::Variable(String::from("b")))
-      ),
-      target:
-        Type::Function(
-          Box::new(Type::Function(
-            Box::new(Type::Variable(String::from("b"))),
-            Box::new(Type::Variable(String::from("c")))
-          )),
-          Box::new(Type::Function(
-            Box::new(Type::Variable(String::from("a"))),
-            Box::new(Type::Variable(String::from("c")))
-          ))
-        ),
-  };
-
-  let chain_backward_morphism = Morphism {
-      name: String::from("<"),
-      source: Type::Function(
-        Box::new(Type::Variable(String::from("b"))),
-        Box::new(Type::Variable(String::from("c")))
-      ),
-      target:
-        Type::Function(
-          Box::new(Type::Function(
-            Box::new(Type::Variable(String::from("a"))),
-            Box::new(Type::Variable(String::from("b")))
-          )),
-          Box::new(Type::Function(
-            Box::new(Type::Variable(String::from("a"))),
-            Box::new(Type::Variable(String::from("c")))
-          ))
-        ),
-  };
-
-  let morphisms : Vec<Morphism>=
-      terms.clone().into_iter().map(|t| Morphism::ap(t))
-      .chain(terms.clone().into_iter()
-            .filter_map(|t| Morphism::morphism_from_term(t)))
-      .chain(iter::once(chain_forward_morphism))
-      .chain(iter::once(chain_backward_morphism))
-      .collect();
+  let morphisms = morphisms_from_terms(&terms);
 
   for m in morphisms.iter() {
     println!("Morphism: {}", m);
   }
-
-  // let n = Type::Nat;
-  // for e in edges(n.clone(), &morphisms).iter() {
-  //   println!("Edge from {}: {}", n, e);
-  // }
-  // let n = generic_function_type;
-  // for e in edges(n.clone(), &morphisms).iter() {
-  //   println!("Edge from {}: {}", n, e);
-  // }
-  // let n = concrete_function_type;
-  // for e in edges(n.clone(), &morphisms).iter() {
-  //   println!("Edge from {}: {}", n, e);
-  // }
 
 }

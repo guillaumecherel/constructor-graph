@@ -92,33 +92,29 @@ impl fmt::Display for Type {
     match self {
       Type::TCon(tc) => write!(f, "{}", tc),
       Type::TVar(u) => write!(f, "{}", u),
-      Type::TAp(al, r) =>
-         match &**al {
-           Type::TAp(_, l) =>
-              write!(f, "({} -> {})", l, r),
-           _ => panic!("Malformed function type.")
-         }
+      Type::TAp(l, r) => write!(f, "({} {})", l, r),
       Type::TGen(i) => write!(f, "TGen {}", i),
     }
   }
 }
 
 //  tUnit    = TCon (Tycon "()" Star)
-pub fn tUnit() -> Type {Type::TCon(Tycon(String::from("()"), Kind::Star))}
+pub fn t_unit() -> Type {Type::TCon(Tycon(String::from("()"), Kind::Star))}
 //  tChar    = TCon (Tycon "Char" Star)
-pub fn tChar() -> Type {Type::TCon(Tycon(String::from("Char"), Kind::Star))}
+pub fn t_char() -> Type {Type::TCon(Tycon(String::from("Char"), Kind::Star))}
 //  tInteger = TCon (Tycon "Integer" Star)
-pub fn tInteger() -> Type {Type::TCon(Tycon(String::from("Integer"), Kind::Star))}
+pub fn t_integer() -> Type {Type::TCon(Tycon(String::from("Integer"), Kind::Star))}
 //  tInt = TCon (Tycon "Int" Star)
-pub fn tInt() -> Type {Type::TCon(Tycon(String::from("Int"), Kind::Star))}
+pub fn t_int() -> Type {Type::TCon(Tycon(String::from("Int"), Kind::Star))}
 //  tNat = TCon (Tycon "Nat" Star)
-pub fn tNat() -> Type {Type::TCon(Tycon(String::from("Natural"), Kind::Star))}
+pub fn t_nat() -> Type {Type::TCon(Tycon(String::from("Natural"), Kind::Star))}
 //  tDouble  = TCon (Tycon "Double" Star)
-pub fn tDouble() -> Type {Type::TCon(Tycon(String::from("Double"), Kind::Star))}
-// 
+pub fn t_double() -> Type {Type::TCon(Tycon(String::from("Double"), Kind::Star))}
+
 //  tList    = TCon (Tycon "[]" (Kfun Star Star))
+pub fn t_list() -> Type {Type::TCon(Tycon(String::from("[]"), Kind::KFun(Box::new(Kind::Star), Box::new(Kind::Star))))}
 //  tArrow   = TCon (Tycon "(->)" (Kfun Star (Kfun Star Star)))
-pub fn tArrow() -> Type {
+pub fn t_arrow() -> Type {
     Type::TCon(Tycon(
         String::from("->"),
         Kind::KFun(
@@ -131,25 +127,63 @@ pub fn tArrow() -> Type {
     ))
 }
 //  tTuple2  = TCon (Tycon "(,)" (Kfun Star (Kfun Star Star)))
+pub fn t_tuple_2() -> Type {
+    Type::TCon(Tycon(
+        String::from("(,)"),
+        Kind::KFun(
+            Box::new(Kind::Star),
+            Box::new(Kind::KFun(
+                Box::new(Kind::Star),
+                Box::new(Kind::Star))
+            )
+        )
+    ))
+}
+
+pub fn t_con(name: &str) -> Type { Type::TCon(Tycon(String::from(name), Kind::Star)) }
 
 // tVar arity 0
-pub fn tVar0(name: &str) -> Type { Type::TVar(Tyvar(String::from(name), Kind::Star)) }
+pub fn t_var_0(name: &str) -> Type { Type::TVar(Tyvar(String::from(name), Kind::Star)) }
 
 // tVar with Kind
-pub fn tVar(name: &str, k: Kind) -> Type { Type::TVar(Tyvar(String::from(name), k)) }
+pub fn t_var(name: &str, k: Kind) -> Type { Type::TVar(Tyvar(String::from(name), k)) }
 
-// tFun
-pub fn tFun(a: Type, b: Type) -> Type {
+// Full list type
+pub fn t_list_t(t: Type) -> Type {
+   Type::TAp(Box::new(t_list()), Box::new(t))
+}
+
+// Tuple
+pub fn t_pair(a: Type, b: Type) -> Type {
    Type::TAp(
        Box::new(Type::TAp(
-           Box::new(tArrow()),
+           Box::new(t_tuple_2()),
            Box::new(a))),
        Box::new(b)
    )
 }
 
+// tFun
+pub fn t_fun(a: Type, b: Type) -> Type {
+   Type::TAp(
+       Box::new(Type::TAp(
+           Box::new(t_arrow()),
+           Box::new(a))),
+       Box::new(b)
+   )
+}
+
+pub fn t_fun_seq(xs: &[Type]) -> Type {
+    match xs {
+        [] => panic!("Vec xs should have at least 2 items"),
+        [x] => panic!("Vec xs should have at least 2 items"),
+        [x, y] => t_fun(x.clone(), y.clone()),
+        _ => t_fun(xs[0].clone(), t_fun_seq(&xs[1..])),
+    }
+}
+
 //tGen
-pub fn tGen(i: usize) -> Type {Type::TGen(i)}
+pub fn t_gen(i: usize) -> Type {Type::TGen(i)}
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -357,8 +391,8 @@ pub fn mgu(a: &Type, b: &Type) -> Result<Subst, String> {
                 mgu(&r.apply_substitution(&s1), &r_.apply_substitution(&s1))
                 .and_then(|s2| Ok(s1.chain(s2)))
             ),
-        (Type::TVar(u), t) => varBind(u, t),
-        (t, Type::TVar(u)) => varBind(u, t),
+        (Type::TVar(u), t) => var_bind(u, t),
+        (t, Type::TVar(u)) => var_bind(u, t),
         (Type::TCon(tc1), Type::TCon(tc2)) =>
             if tc1 == tc2 {Ok(Subst::null())}
             else {Err(format!("types do not unify: Type 1 = {}, Type 2 = {}", a, b))},
@@ -366,7 +400,7 @@ pub fn mgu(a: &Type, b: &Type) -> Result<Subst, String> {
     }
 }
 
-fn varBind(u: &Tyvar, t: &Type) -> Result<Subst, String> {
+fn var_bind(u: &Tyvar, t: &Type) -> Result<Subst, String> {
     if match t {Type::TVar(v) => v == u, _ => false } {
        Ok(Subst::null())
     } else if t.tv().contains(&u) {
@@ -385,7 +419,7 @@ mod tests_mgu {
     #[test]
     fn test_mgu() {
         // a -> (Nat -> a)
-        let t1 = tFun(tVar0("a"), tFun(tNat(), tVar0("a")));
+        let t1 = tFun(t_var_0("a"), tFun(tNat(), t_var_0("a")));
         // Integer -> (Nat -> Integer)
         let t2 = tFun(tInteger(), tFun(tNat(), tInteger()));
         let result : Result<Subst, String> = mgu(&t1, &t2);
@@ -395,7 +429,7 @@ mod tests_mgu {
         assert_eq!( result, expected);
 
         // a -> (Nat -> b)
-        let t1 = tFun(tVar0("a"), tFun(tNat(), tVar0("b")));
+        let t1 = tFun(t_var_0("a"), tFun(tNat(), t_var_0("b")));
         // (Nat -> Int) -> (Nat -> Int)
         let t2 = tFun(tFun(tNat(), tInteger()), tFun(tNat(), tInteger()));
         let result : Result<Subst, String> = mgu(&t1, &t2);
@@ -407,7 +441,7 @@ mod tests_mgu {
         assert_eq!( result, expected);
 
         // a -> (Nat -> a)
-        let t1 = tFun(tVar0("a"), tFun(tNat(), tVar0("a")));
+        let t1 = tFun(t_var_0("a"), tFun(tNat(), t_var_0("a")));
         // Integer -> (Nat -> Nat)
         let t2 = tFun(tInteger(), tFun(tNat(), tNat()));
         let result : Result<Subst, String> = mgu(&t1, &t2);
@@ -582,7 +616,7 @@ pub fn quantify(vs: Option<Vec<Tyvar>>, t: &Type) -> Scheme {
         Some(vs) => t.tv().into_iter().filter(|v| vs.contains(v)).collect(),
     };
     let ks : Vec<Kind> = vs_.iter().map(|&v| v.kind()).cloned().collect();
-    let s : Subst = Subst::from_iter(vs_.into_iter().cloned().zip((0..).into_iter().map(tGen)));
+    let s : Subst = Subst::from_iter(vs_.into_iter().cloned().zip((0..).into_iter().map(t_gen)));
     
     Scheme {
         kinds: ks,
@@ -604,13 +638,13 @@ impl Types for Scheme {
     }
 }
 
-fn newTVar(k: Kind, names: &mut VarNames) -> Type {
+fn new_t_var(k: Kind, names: &mut VarNames) -> Type {
     let new_name = names.next().expect("No new var name");
-    tVar(&new_name, k)
+    t_var(&new_name, k)
 }
 
-pub fn freshInst(s: &Scheme, names: &mut VarNames) -> Type {
-    let ts : Vec<Type> = s.kinds.iter().cloned().map(|k| newTVar(k, names)).collect();
+pub fn fresh_inst(s: &Scheme, names: &mut VarNames) -> Type {
+    let ts : Vec<Type> = s.kinds.iter().cloned().map(|k| new_t_var(k, names)).collect();
     s.t.inst(&ts)
 }
 
@@ -630,43 +664,43 @@ mod tests_scheme {
         assert_eq!(s, e);
 
         // a -> (Nat -> a)
-        let t = tFun(tVar0("a"), tFun(tNat(), tVar0("a")));
+        let t = tFun(t_var_0("a"), tFun(tNat(), t_var_0("a")));
         let s = quantify(None, &t);
         let e = Scheme {
                kinds : vec![Kind::Star],
-               t : tFun(tGen(0), tFun(tNat(), tGen(0))),
+               t : tFun(t_gen(0), tFun(tNat(), t_gen(0))),
         };
         assert_eq!(s, e);
 
         // a -> b
-        let t = tFun(tVar0("a"), tVar0("b"));
+        let t = tFun(t_var_0("a"), t_var_0("b"));
         let s = quantify(None, &t);
         let e = Scheme {
                kinds : vec![Kind::Star, Kind::Star],
-               t : tFun(tGen(0),  tGen(1)),
+               t : tFun(t_gen(0),  t_gen(1)),
         };
         assert_eq!(s, e);
 
         // (g -> e) -> (d -> b)
-        let t = tFun(tFun(tVar0("g"), tVar0("e")), tFun(tVar0("d"), tVar0("b")));
+        let t = tFun(tFun(t_var_0("g"), t_var_0("e")), tFun(t_var_0("d"), t_var_0("b")));
         let s = quantify(None, &t);
         let e = Scheme {
                kinds : vec![Kind::Star, Kind::Star, Kind::Star, Kind::Star],
-               t : tFun(tFun(tGen(0), tGen(1)), tFun(tGen(2), tGen(3))),
+               t : tFun(tFun(t_gen(0), t_gen(1)), tFun(t_gen(2), t_gen(3))),
         };
         assert_eq!(s, e);
 
     }
 
     #[test]
-    fn test_freshInst() {
+    fn test_fresh_inst() {
         let mut candidates = VarNames::new();
         let sch = Scheme {
                kinds : vec![Kind::Star, Kind::Star],
-               t : tFun(tFun(tGen(0), tGen(1)), tGen(1)),
+               t : tFun(tFun(t_gen(0), t_gen(1)), t_gen(1)),
         };
-        let i = freshInst(&sch, &mut candidates);
-        let expect = tFun(tFun(tVar0("a"), tVar0("b")), tVar0("b"));
+        let i = fresh_inst(&sch, &mut candidates);
+        let expect = tFun(tFun(t_var_0("a"), t_var_0("b")), t_var_0("b"));
         assert_eq!(i, expect);
     }
 }

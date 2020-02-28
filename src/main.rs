@@ -2,13 +2,13 @@ mod util;
 mod type_sy;
 
 use std::collections::VecDeque;
+use std::collections::HashSet;
 use std::iter;
 use std::iter::Iterator;
 use std::fmt;
 
-use util::vec_to_string;
-use type_sy::{Kind, HasKind, tGen, Scheme, Type, Tyvar, Types, Subst, tVar0, tFun, mgu, VarNames, var_names, quantify, freshInst,
-              tNat, tInt};
+use type_sy::{mgu, VarNames, Type, var_names, fresh_inst, Tyvar, Subst, Scheme, Types, quantify};
+use type_sy::{t_var_0, t_fun, t_fun_seq, t_int, t_nat, t_con, t_list_t, t_pair, t_double};
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -39,7 +39,7 @@ struct MorphScheme {
 
 impl MorphScheme {
     fn new(name: &str, source: Type, target: Type) -> MorphScheme {
-        let f = tFun(source, target);
+        let f = t_fun(source, target);
         MorphScheme {
             name : String::from(name),
             scheme : quantify(None,&f),
@@ -70,9 +70,9 @@ impl MorphScheme {
     fn ap(Term(label, typ): &Term) -> MorphScheme {
       let used_var_names = var_names(typ).into_iter().cloned();
       let mut candidates = VarNames::new().exclude_all(used_var_names);
-      let new_var = tVar0(&candidates.next().expect("No available var name."));
-      let label = [".", &label].concat();
-      MorphScheme::new(&label, tFun(typ.clone(), new_var.clone()), new_var)
+      let new_var = t_var_0(&candidates.next().expect("No available var name."));
+      let label = ["&", &label].concat();
+      MorphScheme::new(&label, t_fun(typ.clone(), new_var.clone()), new_var)
     }
 
 
@@ -91,20 +91,20 @@ impl MorphScheme {
 
     fn chain_forward() -> MorphScheme {
         MorphScheme::new(">",
-            tFun(tVar0("a"), tVar0("b")),
-            tFun(
-                tFun(tVar0("b"), tVar0("c")),
-                tFun(tVar0("a"), tVar0("c"))
+            t_fun(t_var_0("a"), t_var_0("b")),
+            t_fun(
+                t_fun(t_var_0("b"), t_var_0("c")),
+                t_fun(t_var_0("a"), t_var_0("c"))
             )
         )
     }
 
     fn chain_backward() -> MorphScheme {
         MorphScheme::new("<",
-            tFun(tVar0("b"), tVar0("c")),
-            tFun(
-                tFun(tVar0("a"), tVar0("b")),
-                tFun(tVar0("a"), tVar0("c"))
+            t_fun(t_var_0("b"), t_var_0("c")),
+            t_fun(
+                t_fun(t_var_0("a"), t_var_0("b")),
+                t_fun(t_var_0("a"), t_var_0("c"))
             )
         )
     }
@@ -163,28 +163,28 @@ mod tests_morph_scheme {
     fn test_morph_scheme_new() {
        let m = MorphScheme::new(
            "f",
-           tVar0("a"),
-           tVar0("a")
+           t_var_0("a"),
+           t_var_0("a")
        );
        let expect = MorphScheme{
            name: String::from("f"),
            scheme: Scheme{
                kinds : vec![Kind::Star],
-               t : tFun(tGen(0), tGen(0)),
+               t : t_fun(tGen(0), tGen(0)),
            },
        };
        assert_eq!(m, expect);
 
        let m = MorphScheme::new(
            "f",
-           tFun(tVar0("a"), tVar0("b")),
-           tVar0("b")
+           t_fun(t_var_0("a"), t_var_0("b")),
+           t_var_0("b")
        );
        let expect = MorphScheme{
            name: String::from("f"),
            scheme: Scheme{
                kinds : vec![Kind::Star, Kind::Star],
-               t : tFun(tFun(tGen(0), tGen(1)), tGen(1)),
+               t : t_fun(t_fun(tGen(0), tGen(1)), tGen(1)),
            },
        };
        assert_eq!(m, expect);
@@ -195,6 +195,7 @@ mod tests_morph_scheme {
 #[derive(Eq)]
 #[derive(Clone)]
 #[derive(Debug)]
+#[derive(Hash)]
 struct Morphism {
   name: String,
   source: Type,
@@ -216,7 +217,7 @@ impl Morphism {
     fn from_scheme(ms: &MorphScheme, source: &Type) -> Result<Morphism, String> {
         let used_var_names = var_names(source).into_iter().cloned();
         let mut candidates = VarNames::new().exclude_all(used_var_names);
-        let i = freshInst(&ms.scheme, &mut candidates);
+        let i = fresh_inst(&ms.scheme, &mut candidates);
         let i_source = i.source().unwrap();
         mgu(&i_source, source).map(|u| {
             Morphism::new(
@@ -226,13 +227,21 @@ impl Morphism {
             )
         })
     }
+
+    fn format_dot_edge(&self) -> String {
+        // "((-> Domain) Domain)" -> "Domain" [ label = "&unit_domain" ]
+        "\"".to_owned() + &self.source.to_string() + "\""
+        + " -> "
+        + "\"" + &self.target.to_string() + "\""
+        + " [ label = \"" + &self.name + "\" ]"
+    }
 }
 
 
 
 impl fmt::Display for Morphism {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-     write!(f, "Morphism {}, {} --> {}", self.name, self.source, self.target)
+     write!(f, "Morphism \"{}\": {} --> {}", self.name, self.source, self.target)
   }
 }
 
@@ -246,51 +255,51 @@ mod tests_morphism {
        // f: a -> a; x: b
        let m = MorphScheme::new(
            "f",
-           tVar0("a"),
-           tVar0("a")
+           t_var_0("a"),
+           t_var_0("a")
        );
-       let source = tVar0("b");
+       let source = t_var_0("b");
        let result = Morphism::from_scheme(&m, &source);
        let expect = Ok(Morphism{
            name: String::from("f"),
-           source: tVar0("b"),
-           target: tVar0("b")}
+           source: t_var_0("b"),
+           target: t_var_0("b")}
        );
        assert_eq!(result, expect);
 
        // f: a -> b; x: b
        let m = MorphScheme::new(
            "f",
-           tVar0("a"),
-           tVar0("b")
+           t_var_0("a"),
+           t_var_0("b")
        );
-       let source = tVar0("b");
+       let source = t_var_0("b");
        let result = Morphism::from_scheme(&m, &source);
 
        // b -> a
        let expect = Ok(Morphism{
            name: String::from("f"),
-           source: tVar0("b"),
-           target: tVar0("c")}
+           source: t_var_0("b"),
+           target: t_var_0("c")}
        );
        assert_eq!(result, expect);
 
        // f: (a -> b) -> ( (c -> a) -> (c -> b)); x: x -> y
        let m = MorphScheme::new(
            "f",
-           tFun(tVar0("a"), tVar0("b")),
-           tFun(
-               tFun(tVar0("c"), tVar0("a")),
-               tFun(tVar0("c"), tVar0("b")))
+           t_fun(t_var_0("a"), t_var_0("b")),
+           t_fun(
+               t_fun(t_var_0("c"), t_var_0("a")),
+               t_fun(t_var_0("c"), t_var_0("b")))
        );
-       let source = tFun(tVar0("x"), tVar0("y"));
+       let source = t_fun(t_var_0("x"), t_var_0("y"));
        let result = Morphism::from_scheme(&m, &source);
        let expect = Ok(Morphism{
            name: String::from("f"),
-           source: tFun(tVar0("x"), tVar0("y")),
-           target: tFun(
-               tFun(tVar0("c"), tVar0("x")),
-               tFun(tVar0("c"), tVar0("y")))
+           source: t_fun(t_var_0("x"), t_var_0("y")),
+           target: t_fun(
+               t_fun(t_var_0("c"), t_var_0("x")),
+               t_fun(t_var_0("c"), t_var_0("y")))
        });
        assert_eq!(result, expect);
     }
@@ -306,67 +315,93 @@ fn morph_schemes_from_terms(terms: &Vec<Term>) -> Vec<MorphScheme> {
 }
  
  
-fn edges(source: &Type, mss: &Vec<MorphScheme>) -> Vec<Morphism> {
+fn edges_from(source: &Type, mss: &Vec<MorphScheme>) -> Vec<Morphism> {
    mss.iter().filter_map(|ms: &MorphScheme| -> Option<Morphism> {
        Morphism::from_scheme(ms, source).ok()
    }).collect()
 }
 
-// fn paths()
+struct Edges {
+    queue: VecDeque<Morphism>,
+    morph_schemes: Vec<MorphScheme>,
+}
+
+impl Iterator for Edges {
+    type Item = Morphism;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.queue.pop_front() {
+            None => None,
+            Some(m) => {
+                let next = edges_from(&m.target, &self.morph_schemes);
+                self.queue.extend(next.into_iter());
+                Some (m)
+            }
+        }
+    }
+}
+
+fn edges_from_terms(terms: &Vec<Term>, mss: &Vec<MorphScheme>) -> Edges {
+    Edges {
+        queue: terms.iter().flat_map(|Term(_, t)| edges_from(t, mss)).collect(),
+        morph_schemes: mss.clone(),
+    }
+}
 
 #[cfg(test)]
 mod tests_edges {
     use super::*;
+    use util::vec_to_string;
 
     #[test]
     fn test_edges() {
         let terms: Vec<Term> = vec!
-          [ Term::new("1", tNat())
-          , Term::new("1", tInt())
-          , Term::new("f", tFun(tNat(),tInt()))
-          , Term::new("g", tFun(tVar0("a"), tVar0("b")))
+          [ Term::new("1", t_nat())
+          , Term::new("1", t_int())
+          , Term::new("f", t_fun(t_nat(),t_int()))
+          , Term::new("g", t_fun(t_var_0("a"), t_var_0("b")))
           ];
 
         let morph_schemes = morph_schemes_from_terms(&terms);
 
         // Edges from Nat
-        let n = tNat();
+        let n = t_nat();
         assert_eq!(
-            edges(&n, &morph_schemes),
-            vec![Morphism::new("f", tNat(), tInt()),
-                 Morphism::new("g", tNat(), tVar0("b"))]
+            edges_from(&n, &morph_schemes),
+            vec![Morphism::new("f", t_nat(), t_int()),
+                 Morphism::new("g", t_nat(), t_var_0("b"))]
         );
 
         // Edges from Identity morphism a -> a.
-        let n = tFun(tVar0("a"), tVar0("a"));
-        let res = edges(&n, &morph_schemes);
+        let n = t_fun(t_var_0("a"), t_var_0("a"));
+        let res = edges_from(&n, &morph_schemes);
         let expect =
             vec![
-                 Morphism::new(".1", tFun(tNat(), tNat()), tNat()),
-                 Morphism::new(".1", tFun(tInt(), tInt()), tInt()),
+                 Morphism::new(".1", tFun(t_nat(), t_nat()), t_nat()),
+                 Morphism::new(".1", tFun(t_int(), t_int()), t_int()),
                  Morphism::new(".f",
                      tFun(
-                         tFun(tNat(), tInt()),
-                         tFun(tNat(), tInt())),
-                     tFun(tNat(), tInt())),
+                         tFun(t_nat(), t_int()),
+                         tFun(t_nat(), t_int())),
+                     tFun(t_nat(), t_int())),
                  Morphism::new(".g",
                      tFun(
-                         tFun(tVar0("b"), tVar0("c")),
-                         tFun(tVar0("b"), tVar0("c"))),
-                     tFun(tVar0("b"), tVar0("c"))),
-                 Morphism::new("g", tFun(tVar0("a"), tVar0("a")), tVar0("c")),
+                         tFun(t_var_0("b"), t_var_0("c")),
+                         tFun(t_var_0("b"), t_var_0("c"))),
+                     tFun(t_var_0("b"), t_var_0("c"))),
+                 Morphism::new("g", tFun(t_var_0("a"), t_var_0("a")), t_var_0("c")),
                  Morphism::new(">",
-                     tFun(tVar0("a"), tVar0("a")),
+                     tFun(t_var_0("a"), t_var_0("a")),
                      tFun(
-                         tFun(tVar0("a"), tVar0("d")),
-                         tFun(tVar0("a"), tVar0("d"))
+                         tFun(t_var_0("a"), t_var_0("d")),
+                         tFun(t_var_0("a"), t_var_0("d"))
                      )
                  ),
                  Morphism::new("<",
-                     tFun(tVar0("a"), tVar0("a")),
+                     tFun(t_var_0("a"), t_var_0("a")),
                      tFun(
-                         tFun(tVar0("d"), tVar0("a")),
-                         tFun(tVar0("d"), tVar0("a"))
+                         tFun(t_var_0("d"), t_var_0("a")),
+                         tFun(t_var_0("d"), t_var_0("a"))
                      )
                  ),
              ];
@@ -379,35 +414,35 @@ mod tests_edges {
         );
 
         // Edges from a -> b
-        let n = tFun(tVar0("a"), tVar0("b"));
-        let res = edges(&n, &morph_schemes);
+        let n = tFun(t_var_0("a"), t_var_0("b"));
+        let res = edges_from(&n, &morph_schemes);
         let expect =
             vec![
-                 Morphism::new(".1", tFun(tNat(), tVar0("b")), tVar0("b")),
-                 Morphism::new(".1", tFun(tInt(), tVar0("b")), tVar0("b")),
+                 Morphism::new(".1", tFun(t_nat(), t_var_0("b")), t_var_0("b")),
+                 Morphism::new(".1", tFun(t_int(), t_var_0("b")), t_var_0("b")),
                  Morphism::new(".f",
                      tFun(
-                         tFun(tNat(), tInt()),
-                         tVar0("b")),
-                     tVar0("b")),
+                         tFun(t_nat(), t_int()),
+                         t_var_0("b")),
+                     t_var_0("b")),
                  Morphism::new(".g",
                      tFun(
-                         tFun(tVar0("c"), tVar0("d")),
-                         tVar0("b")),
-                     tVar0("b")),
-                 Morphism::new("g", tFun(tVar0("a"), tVar0("b")), tVar0("d")),
+                         tFun(t_var_0("c"), t_var_0("d")),
+                         t_var_0("b")),
+                     t_var_0("b")),
+                 Morphism::new("g", tFun(t_var_0("a"), t_var_0("b")), t_var_0("d")),
                  Morphism::new(">",
-                     tFun(tVar0("a"), tVar0("b")),
+                     tFun(t_var_0("a"), t_var_0("b")),
                      tFun(
-                         tFun(tVar0("b"), tVar0("e")),
-                         tFun(tVar0("a"), tVar0("e"))
+                         tFun(t_var_0("b"), t_var_0("e")),
+                         tFun(t_var_0("a"), t_var_0("e"))
                      )
                  ),
                  Morphism::new("<",
-                     tFun(tVar0("a"), tVar0("b")),
+                     tFun(t_var_0("a"), t_var_0("b")),
                      tFun(
-                         tFun(tVar0("e"), tVar0("a")),
-                         tFun(tVar0("e"), tVar0("b"))
+                         tFun(t_var_0("e"), t_var_0("a")),
+                         tFun(t_var_0("e"), t_var_0("b"))
                      )
                  ),
              ];
@@ -420,24 +455,24 @@ mod tests_edges {
         );
 
         // Edges from Int-> Int
-        let n = tFun(tInt(), tInt());
-        let res = edges(&n, &morph_schemes);
+        let n = tFun(t_int(), t_int());
+        let res = edges_from(&n, &morph_schemes);
         let expect =
             vec![
-                 Morphism::new(".1", tFun(tInt(), tInt()), tInt()),
-                 Morphism::new("g", tFun(tInt(), tInt()), tVar0("b")),
+                 Morphism::new(".1", t_fun(t_int(), t_int()), t_int()),
+                 Morphism::new("g", t_fun(t_int(), t_int()), t_var_0("b")),
                  Morphism::new(">",
-                     tFun(tInt(), tInt()),
-                     tFun(
-                         tFun(tInt(), tVar0("c")),
-                         tFun(tInt(), tVar0("c"))
+                     t_fun(t_int(), t_int()),
+                     t_fun(
+                         t_fun(t_int(), t_var_0("c")),
+                         t_fun(t_int(), t_var_0("c"))
                      )
                  ),
                  Morphism::new("<",
-                     tFun(tInt(), tInt()),
-                     tFun(
-                         tFun(tVar0("c"), tInt()),
-                         tFun(tVar0("c"), tInt())
+                     t_fun(t_int(), t_int()),
+                     t_fun(
+                         t_fun(t_var_0("c"), t_int()),
+                         t_fun(t_var_0("c"), t_int())
                      )
                  ),
              ];
@@ -453,22 +488,65 @@ mod tests_edges {
 
 
 fn main() {
-// 
-//   let terms: Vec<Term> = vec!
-//       [ Term::new("1", Type::Nat)
-//       , Term::new("1", Type::Int)
-//       , Term::new("f", Type::fun(Type::Nat,Type::Int))
-//       , Term::new("g", Type::fun(Type::var("a"), Type::var("b")))
-//       ];
-// 
-//   for t in terms.iter() {
-//     println!("Term: {}", t);
-//  }
-//
-//  let morphisms = morphisms_from_terms(&terms);
-//
-//  for m in morphisms.iter() {
-//    println!("Morphism: {}", m);
-//  }
-//
+    let id : Term = Term::new("identity", t_fun(t_var_0("a"), t_var_0("a")));
+    
+    let initial: Vec<Term> = vec![
+        Term::new("netlogo_source", t_con("File")),
+        Term::new("netlogo_setup", t_con("Setup")),
+        Term::new("seed", t_con("Seed")),
+        Term::new("unit_domain", t_con("Domain")),
+        Term::new("uniform_prior", t_con("Prior")),
+        Term::new("lhsSampleSize", t_con("LhsSampleSize")),
+    ];
+    
+    let functions: Vec<Term> = vec![
+        Term::new("bounded_domain",
+            t_fun_seq(&[t_list_t(t_pair(t_double(), t_double())), t_con("Domain")])),
+        Term::new("netlogo",
+            t_fun_seq(&[t_con("File"), t_con("Setup"), t_con("Seed"), t_con("Model")])),
+        Term::new("lhs",
+            t_fun_seq(&[t_con("Domain"), t_con("LhsSampleSize"), t_con("Seed"), t_con("Sampling")])),
+        Term::new("direct_sampling",
+            t_fun_seq(&[t_con("Model"), t_con("Sample"), t_con("Sample")])),
+        Term::new("median",
+            t_fun_seq(&[t_con("Sample"), t_con("Median")])),
+        Term::new("abc",
+            t_fun_seq(&[t_con("Model"), t_con("Prior"), t_con("Posterior")])),
+    ];
+
+    let terminal: Vec<Term> = vec![
+        Term::new("done", t_fun_seq(&[t_con("Posterior"), t_con("DONE")])),
+        Term::new("done", t_fun_seq(&[t_con("Median"), t_con("DONE")])),
+    ];
+
+    let terms: Vec<Term> =
+        initial.iter()
+        .chain(functions.iter())
+        .chain(terminal.iter())
+        .cloned().collect();
+
+    println!("Terms:");
+    for t in terms.iter() {
+      println!("    {}", t);
+    }
+
+    let morph_schemes = morph_schemes_from_terms(&terms);
+
+    println!("Morph Schemes:");
+    for m in morph_schemes.iter() {
+      println!("    {}", m);
+    }
+
+    // println!("Edges from identity:");
+    // for m in edges_from_terms(&vec![id], &morph_schemes) {
+    //     println!("{}", m.format_dot_edge());
+    // }
+
+    let edges_set: HashSet<Morphism> = edges_from_terms(&vec![id], &morph_schemes).take(1000).collect();
+    println!("digraph {{");
+    for m in edges_set {
+        println!("{}", m.format_dot_edge());
+    }
+    println!("}}");
 }
+

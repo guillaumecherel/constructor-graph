@@ -9,14 +9,7 @@
 // mpj@cse.ogi.edu
 // Version of November 23, 2000.
 
-// TODO:
-// implément Scheme version simple (sans typeclass, scheme == type avec des valeurs TGen possibles)
-// Pour "bind" un morphisme:
-// m in schemes
-// i = freshInst m
-// c = "current node": Type
-// u = mgu c (source i)
-// si u existe, le lien correspondant nous envoie sur (apply u (target i))
+#![allow(dead_code)]
 
 use std::vec::Vec;
 use std::collections::VecDeque;
@@ -68,45 +61,59 @@ pub enum Type {
 
 impl Type {
     // Return Some(a) if self is a function type (a -> b), None otherwise
-    pub fn source(&self) -> Option<Type> {
+    pub fn source(&self) -> Result<&Type, String> {
        match &self {
            Type::TAp(ap, _) =>
              match &**ap {
-               Type::TAp(_, s) => Some(*s.clone()),
-               _ => None,
+               Type::TAp(_, s) => Ok(&s),
+               _ => Err(String::from("Type is probably not a function")),
              }
-           _ => None,
+           _ => Err(String::from("Type is probably not a function")),
        }
     }
 
-    pub fn target(&self) -> Option<Type> {
+    pub fn target(&self) -> Option<&Type> {
        match &self {
-           Type::TAp(_, t) => Some(*t.clone()),
+           Type::TAp(_, t) => Some(&t),
            _ => None,
        }
     }
 }
 
 impl fmt::Display for Type {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      Type::TCon(tc) => write!(f, "{}", tc),
-      Type::TVar(u) => write!(f, "{}", u),
-      Type::TAp(l, r) => write!(f, "({} {})", l, r),
-      Type::TGen(i) => write!(f, "TGen {}", i),
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::TCon(tc) => write!(f, "{}", tc),
+            Type::TVar(u) => write!(f, "{}", u),
+            Type::TAp(l, r) => match &**l {
+                Type::TAp(ll, lr) => match &**ll {
+                    Type::TCon(Tycon(symbol, _)) => match &symbol[..] {
+                        "->" => write!(f, "({} -> {})", lr, r),
+                        "(,)"=> write!(f, "({}, {})", lr, r),
+                        _ => panic!("I don't know how to format {:?}", self),
+                    }
+                    _ => panic!("I don't know how to format {:?}", self),
+                }
+                Type::TCon(Tycon(symbol, _)) => match &symbol[..] {
+                    "[]" => write!(f, "[{}]", r.to_string()),
+                    _ => panic!("I don't know how to format {:?}", self),
+                }
+                _ => panic!("I don't know how to format {:?}", self),
+            }
+            Type::TGen(i) => write!(f, "TGen {}", i),
+        }
     }
-  }
 }
 
 //  tUnit    = TCon (Tycon "()" Star)
 pub fn t_unit() -> Type {Type::TCon(Tycon(String::from("()"), Kind::Star))}
 //  tChar    = TCon (Tycon "Char" Star)
 pub fn t_char() -> Type {Type::TCon(Tycon(String::from("Char"), Kind::Star))}
-//  tInteger = TCon (Tycon "Integer" Star)
+//  t_integer = TCon (Tycon "Integer" Star)
 pub fn t_integer() -> Type {Type::TCon(Tycon(String::from("Integer"), Kind::Star))}
-//  tInt = TCon (Tycon "Int" Star)
+//  t_int = TCon (Tycon "Int" Star)
 pub fn t_int() -> Type {Type::TCon(Tycon(String::from("Int"), Kind::Star))}
-//  tNat = TCon (Tycon "Nat" Star)
+//  t_nat = TCon (Tycon "Nat" Star)
 pub fn t_nat() -> Type {Type::TCon(Tycon(String::from("Natural"), Kind::Star))}
 //  tDouble  = TCon (Tycon "Double" Star)
 pub fn t_double() -> Type {Type::TCon(Tycon(String::from("Double"), Kind::Star))}
@@ -142,7 +149,7 @@ pub fn t_tuple_2() -> Type {
 
 pub fn t_con(name: &str) -> Type { Type::TCon(Tycon(String::from(name), Kind::Star)) }
 
-// tVar arity 0
+// tVar with kind Star.
 pub fn t_var_0(name: &str) -> Type { Type::TVar(Tyvar(String::from(name), Kind::Star)) }
 
 // tVar with Kind
@@ -163,7 +170,7 @@ pub fn t_pair(a: Type, b: Type) -> Type {
    )
 }
 
-// tFun
+// t_fun
 pub fn t_fun(a: Type, b: Type) -> Type {
    Type::TAp(
        Box::new(Type::TAp(
@@ -173,16 +180,46 @@ pub fn t_fun(a: Type, b: Type) -> Type {
    )
 }
 
+// Arity: 0 for type constants and variables, 1 for a type of function taking 1 argument, etc.
+// Not to be confused with the kind.
+// e.g.: a, a -> a, a -> a -> a all have kind Star but their arity is respectively 0, 1, 2.
+// TODO: what is the arity of a type with Kind * -> * or greater?
+pub fn arity(t: &Type) -> u32 {
+    match t {
+       Type::TCon(Tycon(_, Kind::Star)) => 0,
+       Type::TVar(Tyvar(_, Kind::Star)) => 0,
+       Type::TAp(l, r) => if t.kind() == &Kind::Star {
+           1 + arity(r)
+       } else {
+           panic!("Not sure how to compute arity for {:?}", t)
+       },
+       _ => panic!("Not sure how to compute arity for {:?}", t),
+    }
+}
+
+#[cfg(test)]
+mod tests_arity {
+    use super::*;
+
+    #[test]
+    fn test_arity() {
+        assert_eq!(arity(&t_var_0("a")), 0);
+        assert_eq!(arity(&t_int()), 0);
+        assert_eq!(arity(&t_fun(t_int(), t_int())), 1);
+        assert_eq!(arity(&t_fun_seq(&[t_int(), t_int(), t_int()])), 2);
+    }
+}
+
 pub fn t_fun_seq(xs: &[Type]) -> Type {
     match xs {
         [] => panic!("Vec xs should have at least 2 items"),
-        [x] => panic!("Vec xs should have at least 2 items"),
+        [_] => panic!("Vec xs should have at least 2 items"),
         [x, y] => t_fun(x.clone(), y.clone()),
         _ => t_fun(xs[0].clone(), t_fun_seq(&xs[1..])),
     }
 }
 
-//tGen
+//t_gen
 pub fn t_gen(i: usize) -> Type {Type::TGen(i)}
 
 #[derive(Clone)]
@@ -216,7 +253,7 @@ impl fmt::Display for Tyvar {
 }
 
 // Type variable arity 0
-pub fn tyvar0(name: &str) -> Tyvar {Tyvar(String::from(name), Kind::Star)}
+pub fn ty_var_0(name: &str) -> Tyvar {Tyvar(String::from(name), Kind::Star)}
 
 pub trait HasKind {
     fn kind(&self) -> &Kind;
@@ -254,6 +291,16 @@ impl HasKind for Type {
 #[derive(Eq)]
 pub struct Subst(HashMap<Tyvar, Type>);
 
+impl fmt::Display for Subst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Subst(hmap) = self;
+        for (tv, t) in hmap.iter() {
+           write!(f, "{} ~> {}\n", tv, t)?;
+        }
+        Ok(())
+    }
+}
+    
 impl Subst {
     fn null() -> Subst {Subst(HashMap::new())}
 
@@ -328,59 +375,6 @@ impl Types for Type {
             _ => VecDeque::new(),
         }
     }
-
-    // // While applying substitution, any variable that doesn't get substituted
-    // // but appear in the substitution as a possible replacement gets renamed
-    // // to an unused name.
-    // fn apply_subst_disambig(&self, mut subst: Subst) -> (Subst, Self) {
-    //     let replacements : HashSet<Type> = subst.0.values().cloned().collect::<HashSet<Type>>();
-    //     // Replacements' names.
-    //     let names_in_replacements =
-    //         replacements.iter().cloned().filter_map(|t: Type| -> Option<String> {
-    //            match t {
-    //                Type::TVar(Tyvar(n,_)) => Some(n),
-    //                _ => None,
-    //            }
-    //         });
-    //     // New variable name candidates
-    //     let candidates = &mut VarNames::new().exclude_all(names_in_replacements);
-
-    //     fn go(
-    //         x: &Type,
-    //         mut substitutions: Subst,
-    //         mut replacements: HashSet<Type>,
-    //         candidates: &mut VarNames)
-    //        -> (Type, Subst, HashSet<Type>)  {
-    //         match x {
-    //             Type::TVar(u) => match substitutions.get(u) {
-    //                 Some(t) => (t.clone(), substitutions, replacements),
-    //                 None => if replacements.contains(&x) {
-    //                     let new_name : String = candidates.next().expect("No new var name.");
-    //                     let new_var = tVar0(&new_name);
-    //                     substitutions.insert(u.clone(), new_var.clone());
-    //                     replacements.insert(new_var.clone());
-    //                     (new_var, substitutions, replacements)
-    //                 } else {
-    //                     (Type::TVar(u.clone()), substitutions, replacements)
-    //                 }
-    //             },
-    //             Type::TAp(l, r) => {
-    //                 let (l_, substitutions, replacements) =
-    //                     go(l, substitutions, replacements, candidates);
-    //                 let (r_, substitutions, replacements) =
-    //                     go(r, substitutions, replacements, candidates);
-    //                 (tFun(l_, r_), substitutions, replacements)
-    //             }
-    //               //   Type::TAp(Box::new(l.apply_substitution(subst)),
-    //               //             Box::new(r.apply_substitution(subst))),
-    //             t => (t.clone(), substitutions, replacements),
-    //         }
-    //     }
-
-    //     let (x, subst, _) = go(self, subst, replacements, candidates);
-    //     (subst, x)
-    // }
-
 }
 
 pub fn mgu(a: &Type, b: &Type) -> Result<Subst, String> {
@@ -395,8 +389,8 @@ pub fn mgu(a: &Type, b: &Type) -> Result<Subst, String> {
         (t, Type::TVar(u)) => var_bind(u, t),
         (Type::TCon(tc1), Type::TCon(tc2)) =>
             if tc1 == tc2 {Ok(Subst::null())}
-            else {Err(format!("types do not unify: Type 1 = {}, Type 2 = {}", a, b))},
-        (_, _) => Err(format!("types do not unify: Type 1 = {}, Type 2 = {}", a, b)),
+            else {Err(format!("types do not unify: Type 1 = {:?}, Type 2 = {:?}", a, b))},
+        (_, _) => Err(format!("types do not unify: Type 1 = {:?}, Type 2 = {:?}", a, b)),
     }
 }
 
@@ -419,31 +413,31 @@ mod tests_mgu {
     #[test]
     fn test_mgu() {
         // a -> (Nat -> a)
-        let t1 = tFun(t_var_0("a"), tFun(tNat(), t_var_0("a")));
+        let t1 = t_fun(t_var_0("a"), t_fun(t_nat(), t_var_0("a")));
         // Integer -> (Nat -> Integer)
-        let t2 = tFun(tInteger(), tFun(tNat(), tInteger()));
+        let t2 = t_fun(t_integer(), t_fun(t_nat(), t_integer()));
         let result : Result<Subst, String> = mgu(&t1, &t2);
         let expected : Result<Subst, String> = Ok(
-             Subst(vec![(tyvar0("a"), tInteger())].into_iter().collect())
+             Subst(vec![(ty_var_0("a"), t_integer())].into_iter().collect())
          );
         assert_eq!( result, expected);
 
         // a -> (Nat -> b)
-        let t1 = tFun(t_var_0("a"), tFun(tNat(), t_var_0("b")));
+        let t1 = t_fun(t_var_0("a"), t_fun(t_nat(), t_var_0("b")));
         // (Nat -> Int) -> (Nat -> Int)
-        let t2 = tFun(tFun(tNat(), tInteger()), tFun(tNat(), tInteger()));
+        let t2 = t_fun(t_fun(t_nat(), t_integer()), t_fun(t_nat(), t_integer()));
         let result : Result<Subst, String> = mgu(&t1, &t2);
         let expected : Result<Subst, String> = Ok(
-             Subst(vec![(tyvar0("a"), tFun(tNat(), tInteger())),
-                  (tyvar0("b"), tInteger())]
+             Subst(vec![(ty_var_0("a"), t_fun(t_nat(), t_integer())),
+                  (ty_var_0("b"), t_integer())]
              .into_iter().collect())
          );
         assert_eq!( result, expected);
 
         // a -> (Nat -> a)
-        let t1 = tFun(t_var_0("a"), tFun(tNat(), t_var_0("a")));
+        let t1 = t_fun(t_var_0("a"), t_fun(t_nat(), t_var_0("a")));
         // Integer -> (Nat -> Nat)
-        let t2 = tFun(tInteger(), tFun(tNat(), tNat()));
+        let t2 = t_fun(t_integer(), t_fun(t_nat(), t_nat()));
         let result : Result<Subst, String> = mgu(&t1, &t2);
         assert!( result.is_err() );
     }
@@ -520,33 +514,41 @@ mod tests_mgu {
 
 
 #[derive(Clone)]
-pub struct VarNames {
+pub struct VarNames<'a> {
     value: String,
-    excluded: HashSet<String>
+    excluded: HashSet<&'a String>
 }
 
-impl VarNames {
-    pub fn new() -> VarNames {
+impl<'a> VarNames<'a> {
+    pub fn new() -> VarNames<'a> {
         VarNames {
             value: String::from(""),
             excluded: HashSet::new()
         }
     }
 
-    pub fn exclude(mut self, name: String) -> VarNames {
+    pub fn excluding<T>(names: T) -> VarNames<'a>
+        where T: Iterator<Item=&'a String> {
+        VarNames {
+            value: String::from(""),
+            excluded: names.collect(),
+        }
+    }
+
+    pub fn exclude(mut self, name: &'a String) -> VarNames<'a> {
         self.excluded.insert(name);
         self
     }
 
-    pub fn exclude_all<T>(mut self, names: T) -> VarNames
-        where T: Iterator<Item = String>
+    pub fn exclude_all<T>(mut self, names: T) -> VarNames<'a>
+        where T: Iterator<Item = &'a String>
     {
         self.excluded.extend(names);
         self
     }
 }
 
-impl Iterator for VarNames {
+impl<'a> Iterator for VarNames<'a> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -655,7 +657,7 @@ mod tests_scheme {
     #[test]
     fn test_quantify() {
         // Integer -> (Nat -> Integer)
-        let t = tFun(tInteger(), tFun(tNat(), tInteger()));
+        let t = t_fun(t_integer(), t_fun(t_nat(), t_integer()));
         let s = quantify(None, &t);
         let e = Scheme {
                kinds : vec![],
@@ -664,29 +666,29 @@ mod tests_scheme {
         assert_eq!(s, e);
 
         // a -> (Nat -> a)
-        let t = tFun(t_var_0("a"), tFun(tNat(), t_var_0("a")));
+        let t = t_fun(t_var_0("a"), t_fun(t_nat(), t_var_0("a")));
         let s = quantify(None, &t);
         let e = Scheme {
                kinds : vec![Kind::Star],
-               t : tFun(t_gen(0), tFun(tNat(), t_gen(0))),
+               t : t_fun(t_gen(0), t_fun(t_nat(), t_gen(0))),
         };
         assert_eq!(s, e);
 
         // a -> b
-        let t = tFun(t_var_0("a"), t_var_0("b"));
+        let t = t_fun(t_var_0("a"), t_var_0("b"));
         let s = quantify(None, &t);
         let e = Scheme {
                kinds : vec![Kind::Star, Kind::Star],
-               t : tFun(t_gen(0),  t_gen(1)),
+               t : t_fun(t_gen(0),  t_gen(1)),
         };
         assert_eq!(s, e);
 
         // (g -> e) -> (d -> b)
-        let t = tFun(tFun(t_var_0("g"), t_var_0("e")), tFun(t_var_0("d"), t_var_0("b")));
+        let t = t_fun(t_fun(t_var_0("g"), t_var_0("e")), t_fun(t_var_0("d"), t_var_0("b")));
         let s = quantify(None, &t);
         let e = Scheme {
                kinds : vec![Kind::Star, Kind::Star, Kind::Star, Kind::Star],
-               t : tFun(tFun(t_gen(0), t_gen(1)), tFun(t_gen(2), t_gen(3))),
+               t : t_fun(t_fun(t_gen(0), t_gen(1)), t_fun(t_gen(2), t_gen(3))),
         };
         assert_eq!(s, e);
 
@@ -697,10 +699,10 @@ mod tests_scheme {
         let mut candidates = VarNames::new();
         let sch = Scheme {
                kinds : vec![Kind::Star, Kind::Star],
-               t : tFun(tFun(t_gen(0), t_gen(1)), t_gen(1)),
+               t : t_fun(t_fun(t_gen(0), t_gen(1)), t_gen(1)),
         };
         let i = fresh_inst(&sch, &mut candidates);
-        let expect = tFun(tFun(t_var_0("a"), t_var_0("b")), t_var_0("b"));
+        let expect = t_fun(t_fun(t_var_0("a"), t_var_0("b")), t_var_0("b"));
         assert_eq!(i, expect);
     }
 }

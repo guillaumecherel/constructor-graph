@@ -72,10 +72,10 @@ impl Type {
        }
     }
 
-    pub fn target(&self) -> Option<&Type> {
+    pub fn target(&self) -> Result<&Type, String> {
        match &self {
-           Type::TAp(_, t) => Some(&t),
-           _ => None,
+           Type::TAp(_, t) => Ok(&t),
+           _ => Err(String::from("Type is probably not a function")),
        }
     }
 }

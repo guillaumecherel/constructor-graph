@@ -24,7 +24,12 @@ impl Term {
        match self {Term(_, t) => arity(t)}
     }
 
-    fn target(&self) -> Option<&Type> {
+    fn source(&self) -> Result<&Type, String> {
+       let Term(_, t) = self;
+       t.source()
+    }
+
+    fn target(&self) -> Result<&Type, String> {
        let Term(_, t) = self;
        t.target()
     }
@@ -258,14 +263,6 @@ impl Morphism {
             source : source,
             target : target,
         }
-    }
-
-    fn format_dot_edge(&self) -> String {
-        // "((-> Domain) Domain)" -> "Domain" [ label = "&unit_domain" ]
-        "\"".to_owned() + &self.source.to_string() + "\""
-        + " -> "
-        + "\"" + &self.target.to_string() + "\""
-        + " [ label = \"" + &self.name + "\" ]"
     }
 
     // Forward composition: given self: X -> Y and m: Y -> Z, self.compose(m) : X -> Z.
@@ -669,26 +666,27 @@ fn test_input() -> (Vec<Term>, Vec<MorphScheme>) {
             t_fun_seq(&[t_con("Sample"), t_con("Median")])),
         Term::new("abc",
             t_fun_seq(&[t_con("Model"), t_con("Prior"), t_con("Posterior")])),
-        Term::new("done", t_fun_seq(&[t_con("Posterior"), t_con("DONE")])),
-        Term::new("done", t_fun_seq(&[t_con("Median"), t_con("DONE")])),
+        Term::new("calibrate",
+            t_fun_seq(&[t_con("START"), t_con("Posterior"), t_con("OMS")])),
+        Term::new("agg_stats",
+            t_fun_seq(&[t_con("START"), t_con("Median"), t_con("OMS")])),
+        Term::new("agg_stats",
+            t_fun_seq(&[t_con("START"), t_con("Median"), t_con("OMS")])),
     ];
 
     let morph_schemes = morph_schemes_from_terms(&terms);
 
-    // let initial: Vec<Term> = vec![
-    //     Term::new("start_abc",
-    //         t_fun_seq(&[
-    //             t_con("START"),
-    //             t_fun_seq(&[t_con("Model"), t_con("Prior"), t_con("Posterior")])])),
-    //     Term::new("start_median",
-    //         t_fun_seq(&[
-    //             t_con("START"),
-    //             ])),
-    // ];
-
     (terms, morph_schemes)
 }
 
+fn start_nodes(terms: &Vec<Term>) -> Vec<&Term> {
+    let start_node = t_con("START");
+    terms.iter()
+    .filter(|t|
+        t.source()
+        .map_or(false, |src| src == &start_node) )
+    .collect()
+}
 
 fn output_info(terms: &Vec<Term>, morph_schemes: &Vec<MorphScheme>) {
     println!("Terms:");
@@ -701,28 +699,33 @@ fn output_info(terms: &Vec<Term>, morph_schemes: &Vec<MorphScheme>) {
     for m in morph_schemes.iter() {
       println!("    {}", m);
     }
+
+    let start = start_nodes(terms);
+    println!("Start nodes:");
+    for m in start.iter() {
+      println!("    {}", m);
+    }
 }
 
 
 fn output_gv(terms: &Vec<Term>, morph_schemes: &Vec<MorphScheme>) {
-    // println!("Edges from identity:");
-    // for m in edges_from_terms(&vec![id], &morph_schemes) {
-    //     println!("{}", m.format_dot_edge());
-    // }
-
-    // let id : Term = Term::new("identity", t_fun(t_var_0("a"), t_var_0("a")));
-    let terminal_node = t_con("DONE");
-    let terminal : Vec<&Term> = terms.iter().filter(|t|
-        t.target()
-        .map_or(false, |target| target == &terminal_node)
-    ).collect();
-
+    // let start = start_nodes(terms);
+    let start = vec![Term::new("start", t_con("START"))];
     let edges_set: HashSet<Morphism> =
-        edges_from_terms(&terminal, &morph_schemes).take(1000).collect();
+        edges_from_terms(&start.iter().collect(), &morph_schemes).take(1000).collect();
+
+    fn format_dot_edge(m: &Morphism) -> String {
+        // "((-> Domain) Domain)" -> "Domain" [ label = "&unit_domain" ]
+        format!("\"{src}\" -> \"{tgt}\" [ label=\" {name} \" ]",
+                src = m.source,
+                tgt = m.target,
+                name = m.name)
+    }
 
     println!("digraph {{");
+    println!("    node [ shape=point ] ");
     for m in edges_set {
-        println!("    {}", m.format_dot_edge());
+        println!("    {}", format_dot_edge(&m));
     }
     println!("}}");
 }

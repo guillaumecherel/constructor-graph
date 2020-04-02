@@ -30,22 +30,14 @@ pub enum Kind {
     KFun(Box<Kind>, Box<Kind>),
 }
 
-// impl fmt::Display for Kind {
-//   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//     match self {
-//        Star => write!(f, "*"),
-//        KFun(k1, k2) => write!(f, "({} -> {})", k1, k2),
-//     }
-//   }
-// }
-
-// impl fmt::Display for Vec<Kind> {
-//   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//       if self.is_empty {write!(f, "]")}
-//       else {write }
-//   }
-// }
-
+impl fmt::Display for Kind {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+       Kind::Star => write!(f, "*"),
+       Kind::KFun(k1, k2) => write!(f, "({} -> {})", k1, k2),
+    }
+  }
+}
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -60,23 +52,31 @@ pub enum Type {
 }
 
 impl Type {
-    // Return Some(a) if self is a function type (a -> b), None otherwise
-    pub fn source(&self) -> Result<&Type, String> {
-       match &self {
-           Type::TAp(ap, _) =>
-             match &**ap {
-               Type::TAp(_, s) => Ok(&s),
-               _ => Err(String::from("Type is probably not a function")),
-             }
-           _ => Err(String::from("Type is probably not a function")),
-       }
+    // Return Some((a,b)) if self is a function type (a -> b), None otherwise.
+    pub fn fun_split(&self) -> Option<(&Type, &Type)> {
+        match self {
+            Type::TAp(l, r) => match &**l {
+                Type::TAp(ll, lr) => match &**ll {
+                    Type::TCon(Tycon(symbol, _)) => match &symbol[..] {
+                        "->" => Some((lr,r)),
+                        _ => None,
+                    }
+                    _ => None,
+                }
+                _ => None,
+            }
+            _ => None,
+        }
     }
 
-    pub fn target(&self) -> Result<&Type, String> {
-       match &self {
-           Type::TAp(_, t) => Ok(&t),
-           _ => Err(String::from("Type is probably not a function")),
-       }
+    // Return Ok(a) if self is a function type (a -> b), None otherwise
+    pub fn fun_source(&self) -> Option<&Type> {
+        self.fun_split().map(|(src, _)| src)
+    }
+
+    // Return Ok(b) if self is a function type (a -> b), None otherwise
+    pub fn fun_target(&self) -> Option<&Type> {
+        self.fun_split().map(|(_, tgt)| tgt)
     }
 }
 
@@ -105,21 +105,27 @@ impl fmt::Display for Type {
     }
 }
 
-//  tUnit    = TCon (Tycon "()" Star)
-pub fn t_unit() -> Type {Type::TCon(Tycon(String::from("()"), Kind::Star))}
-//  tChar    = TCon (Tycon "Char" Star)
-pub fn t_char() -> Type {Type::TCon(Tycon(String::from("Char"), Kind::Star))}
-//  t_integer = TCon (Tycon "Integer" Star)
-pub fn t_integer() -> Type {Type::TCon(Tycon(String::from("Integer"), Kind::Star))}
-//  t_int = TCon (Tycon "Int" Star)
-pub fn t_int() -> Type {Type::TCon(Tycon(String::from("Int"), Kind::Star))}
-//  t_nat = TCon (Tycon "Nat" Star)
-pub fn t_nat() -> Type {Type::TCon(Tycon(String::from("Natural"), Kind::Star))}
-//  tDouble  = TCon (Tycon "Double" Star)
-pub fn t_double() -> Type {Type::TCon(Tycon(String::from("Double"), Kind::Star))}
+//// Predefined types ////
 
+//  tUnit    = TCon (Tycon "()" Star)
+pub fn t_unit() -> Type {t_con("()")}
+//  tChar    = TCon (Tycon "Char" Star)
+pub fn t_char() -> Type {t_con("Char")}
+//  t_integer = TCon (Tycon "Integer" Star)
+pub fn t_integer() -> Type {t_con("Integer")}
+//  t_int = TCon (Tycon "Int" Star)
+pub fn t_int() -> Type {t_con("Int")}
+//  t_nat = TCon (Tycon "Nat" Star)
+pub fn t_nat() -> Type {t_con("Natural")}
+//  tDouble  = TCon (Tycon "Double" Star)
+pub fn t_double() -> Type {t_con("Double")}
 //  tList    = TCon (Tycon "[]" (Kfun Star Star))
-pub fn t_list() -> Type {Type::TCon(Tycon(String::from("[]"), Kind::KFun(Box::new(Kind::Star), Box::new(Kind::Star))))}
+pub fn t_list() -> Type {
+    Type::TCon(Tycon(
+        String::from("[]"),
+        Kind::KFun(
+            Box::new(Kind::Star),
+            Box::new(Kind::Star))))}
 //  tArrow   = TCon (Tycon "(->)" (Kfun Star (Kfun Star Star)))
 pub fn t_arrow() -> Type {
     Type::TCon(Tycon(
@@ -128,11 +134,7 @@ pub fn t_arrow() -> Type {
             Box::new(Kind::Star),
             Box::new(Kind::KFun(
                 Box::new(Kind::Star),
-                Box::new(Kind::Star))
-            )
-        )
-    ))
-}
+                Box::new(Kind::Star))))))}
 //  tTuple2  = TCon (Tycon "(,)" (Kfun Star (Kfun Star Star)))
 pub fn t_tuple_2() -> Type {
     Type::TCon(Tycon(
@@ -141,21 +143,32 @@ pub fn t_tuple_2() -> Type {
             Box::new(Kind::Star),
             Box::new(Kind::KFun(
                 Box::new(Kind::Star),
-                Box::new(Kind::Star))
-            )
-        )
-    ))
-}
+                Box::new(Kind::Star))))))}
 
+
+//// Type constructor helpers ////
+
+// Constant
 pub fn t_con(name: &str) -> Type { Type::TCon(Tycon(String::from(name), Kind::Star)) }
 
-// tVar with kind Star.
-pub fn t_var_0(name: &str) -> Type { Type::TVar(Tyvar(String::from(name), Kind::Star)) }
-
-// tVar with Kind
+// Variable with specified kind
 pub fn t_var(name: &str, k: Kind) -> Type { Type::TVar(Tyvar(String::from(name), k)) }
 
-// Full list type
+// Variable with kind *
+pub fn t_var_0(name: &str) -> Type { Type::TVar(Tyvar(String::from(name), Kind::Star)) }
+
+// Parameterized data type
+pub fn t_param(name: &str, xs: &[Type]) -> Type {
+    if xs.is_empty() {
+       t_con(name)
+    } else {
+       Type::TAp(
+           Box::new(t_param(name, &xs[..xs.len() - 1])),
+           Box::new(xs[xs.len()].clone()))
+    }
+}
+
+// List
 pub fn t_list_t(t: Type) -> Type {
    Type::TAp(Box::new(t_list()), Box::new(t))
 }
@@ -170,7 +183,7 @@ pub fn t_pair(a: Type, b: Type) -> Type {
    )
 }
 
-// t_fun
+// Function
 pub fn t_fun(a: Type, b: Type) -> Type {
    Type::TAp(
        Box::new(Type::TAp(
@@ -180,47 +193,28 @@ pub fn t_fun(a: Type, b: Type) -> Type {
    )
 }
 
-// Arity: 0 for type constants and variables, 1 for a type of function taking 1 argument, etc.
-// Not to be confused with the kind.
-// e.g.: a, a -> a, a -> a -> a all have kind Star but their arity is respectively 0, 1, 2.
-// TODO: what is the arity of a type with Kind * -> * or greater?
-pub fn arity(t: &Type) -> u32 {
-    match t {
-       Type::TCon(Tycon(_, Kind::Star)) => 0,
-       Type::TVar(Tyvar(_, Kind::Star)) => 0,
-       Type::TAp(l, r) => if t.kind() == &Kind::Star {
-           1 + arity(r)
-       } else {
-           panic!("Not sure how to compute arity for {:?}", t)
-       },
-       _ => panic!("Not sure how to compute arity for {:?}", t),
-    }
-}
-
-#[cfg(test)]
-mod tests_arity {
-    use super::*;
-
-    #[test]
-    fn test_arity() {
-        assert_eq!(arity(&t_var_0("a")), 0);
-        assert_eq!(arity(&t_int()), 0);
-        assert_eq!(arity(&t_fun(t_int(), t_int())), 1);
-        assert_eq!(arity(&t_fun_seq(&[t_int(), t_int(), t_int()])), 2);
-    }
-}
-
+// Function or Variable
 pub fn t_fun_seq(xs: &[Type]) -> Type {
     match xs {
         [] => panic!("Vec xs should have at least 2 items"),
-        [_] => panic!("Vec xs should have at least 2 items"),
+        [x] => x.clone(),
         [x, y] => t_fun(x.clone(), y.clone()),
         _ => t_fun(xs[0].clone(), t_fun_seq(&xs[1..])),
     }
 }
 
-//t_gen
+// TGen
 pub fn t_gen(i: usize) -> Type {Type::TGen(i)}
+
+
+// Arity: 0 for type constants and variables, 1 for a type of function taking 1 argument, etc.
+// Not to be confused with the kind.
+// e.g.: a, a -> a, a -> a -> a all have kind * but their arity is respectively 0, 1, 2.
+// TODO: what is the arity of a type with Kind * -> * or greater?
+pub fn arity(t: &Type) -> u32 {
+    t.fun_target().map_or(0, |tgt| 1 + arity(tgt))
+}
+
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -252,7 +246,7 @@ impl fmt::Display for Tyvar {
   }
 }
 
-// Type variable arity 0
+// Type variable with kind *
 pub fn ty_var_0(name: &str) -> Tyvar {Tyvar(String::from(name), Kind::Star)}
 
 pub trait HasKind {
@@ -278,9 +272,9 @@ impl HasKind for Type {
             Type::TVar(u) => u.kind(),
             Type::TAp(t, _) => match t.kind() {
                 Kind::KFun(_, k) => k,
-                Kind::Star => panic!("Code shouldn't pass here."),
+                Kind::Star => panic!("Code should never pass here."),
             }
-            Type::TGen(_) => panic!("Code shouldn't pass here: cannot know the kind of TGen outside of a Scheme."),
+            Type::TGen(_) => panic!("Code should never pass here: cannot know the kind of TGen outside of a Scheme."),
         }
     }
 }
@@ -339,13 +333,39 @@ impl Subst {
     }
 }
 
+pub fn mgu(a: &Type, b: &Type) -> Result<Subst, String> {
+    match (a, b) {
+        (Type::TAp(l, r), Type::TAp(l_, r_)) =>
+            mgu(l, l_)
+            .and_then(|s1|
+                mgu(&r.apply_substitution(&s1), &r_.apply_substitution(&s1))
+                .and_then(|s2| Ok(s1.chain(s2)))
+            ),
+        (Type::TVar(u), t) => var_bind(u, t),
+        (t, Type::TVar(u)) => var_bind(u, t),
+        (Type::TCon(tc1), Type::TCon(tc2)) =>
+            if tc1 == tc2 {Ok(Subst::null())}
+            else {Err(format!("types do not unify: Type 1 = {:?}, Type 2 = {:?}", a, b))},
+        (_, _) => Err(format!("types do not unify: Type 1 = {:?}, Type 2 = {:?}", a, b)),
+    }
+}
+
+fn var_bind(u: &Tyvar, t: &Type) -> Result<Subst, String> {
+    if match t {Type::TVar(v) => v == u, _ => false } {
+       Ok(Subst::null())
+    } else if t.tv().contains(&u) {
+       Err(format!("occurs check fails: the variable {:?} occurs in the type {:?}", u, t))
+    } else if u.kind() != t.kind() {
+       Err(format!("kinds do not match: Type 1 = {:?}, Type 2 = {:?}", t, u))
+    } else {
+       Ok(Subst::single(u.clone(), t.clone()))
+    }
+}
+
+
 pub trait Types {
     fn apply_substitution(&self, subst: &Subst) -> Self;
     fn tv(&self) -> VecDeque<&Tyvar>;
-}
-
-pub fn var_names<T: Types>(t: &T) -> VecDeque<&String> {
-    t.tv().iter().map(|&Tyvar(name, _)| name).collect()
 }
 
 impl Types for Type {
@@ -377,38 +397,159 @@ impl Types for Type {
     }
 }
 
-pub fn mgu(a: &Type, b: &Type) -> Result<Subst, String> {
-    match (a, b) {
-        (Type::TAp(l, r), Type::TAp(l_, r_)) =>
-            mgu(l, l_)
-            .and_then(|s1|
-                mgu(&r.apply_substitution(&s1), &r_.apply_substitution(&s1))
-                .and_then(|s2| Ok(s1.chain(s2)))
-            ),
-        (Type::TVar(u), t) => var_bind(u, t),
-        (t, Type::TVar(u)) => var_bind(u, t),
-        (Type::TCon(tc1), Type::TCon(tc2)) =>
-            if tc1 == tc2 {Ok(Subst::null())}
-            else {Err(format!("types do not unify: Type 1 = {:?}, Type 2 = {:?}", a, b))},
-        (_, _) => Err(format!("types do not unify: Type 1 = {:?}, Type 2 = {:?}", a, b)),
+pub fn var_names<T: Types>(t: &T) -> VecDeque<&String> {
+    t.tv().iter().map(|&Tyvar(name, _)| name).collect()
+}
+
+
+
+#[derive(Clone)]
+pub struct VarNames<'a> {
+    value: String,
+    excluded: HashSet<&'a String>
+}
+
+impl<'a> VarNames<'a> {
+    pub fn new() -> VarNames<'a> {
+        VarNames {
+            value: String::from(""),
+            excluded: HashSet::new()
+        }
+    }
+
+    pub fn excluding<T>(names: T) -> VarNames<'a>
+        where T: Iterator<Item=&'a String> {
+        VarNames {
+            value: String::from(""),
+            excluded: names.collect(),
+        }
+    }
+
+    pub fn exclude(mut self, name: &'a String) -> VarNames<'a> {
+        self.excluded.insert(name);
+        self
+    }
+
+    pub fn exclude_all<T>(mut self, names: T) -> VarNames<'a>
+        where T: Iterator<Item = &'a String>
+    {
+        self.excluded.extend(names);
+        self
     }
 }
 
-fn var_bind(u: &Tyvar, t: &Type) -> Result<Subst, String> {
-    if match t {Type::TVar(v) => v == u, _ => false } {
-       Ok(Subst::null())
-    } else if t.tv().contains(&u) {
-       Err(format!("occurs check fails: the variable {:?} occurs in the type {:?}", u, t))
-    } else if u.kind() != t.kind() {
-       Err(format!("kinds do not match: Type 1 = {:?}, Type 2 = {:?}", t, u))
-    } else {
-       Ok(Subst::single(u.clone(), t.clone()))
+impl<'a> Iterator for VarNames<'a> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut next : String = next_string(&self.value);
+        while self.excluded.contains(&next) {
+            next = next_string(&next);
+        }
+        self.value = next;
+        Some(self.value.clone())
+    }
+}
+
+fn next_string(s: &str) -> String {
+  match s.chars().rev().next() {
+    None => String::from("a"),
+    Some('z') => {
+      let mut t = next_string(&s[..s.len() - 1]);
+      t.push('a');
+      t
+    }
+    Some(c) => {
+      let mut t = String::from(&s[..s.len() - 1]);
+      t.push((c as u8 + 1) as char);
+      t
+    }
+  }
+}
+
+// This is a simplified version of the Scheme definition that appears in the reference paper
+// that doesn't take into account typeclasses: as a result,
+// Qual Type is simply replaced by Type.
+#[derive(Clone)]
+#[derive(Debug)]
+#[derive(PartialEq)]
+#[derive(Eq)]
+pub struct Scheme {
+    pub kinds: Vec<Kind>,
+    pub t: Type,
+}
+
+// If vs is None, quantify all type variables in t.
+pub fn quantify(vs: Option<Vec<Tyvar>>, t: &Type) -> Scheme {
+    let vs_ : VecDeque<&Tyvar> = match vs {
+        None => t.tv(),
+        Some(vs) => t.tv().into_iter().filter(|v| vs.contains(v)).collect(),
+    };
+    let ks : Vec<Kind> = vs_.iter().map(|&v| v.kind()).cloned().collect();
+    let s : Subst = Subst::from_iter(vs_.into_iter().cloned().zip((0..).into_iter().map(t_gen)));
+    
+    Scheme {
+        kinds: ks,
+        t: t.apply_substitution(&s),
+    }
+}
+
+impl fmt::Display for Scheme {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "Scheme{{kinds: {:?}, t: {}}}", self.kinds, self.t)
+  }
+}
+
+impl Types for Scheme {
+    fn apply_substitution(&self, subst: &Subst) -> Self {
+       Scheme {
+           kinds: self.kinds.clone(),
+           t: self.t.apply_substitution(subst),
+       }
+    }
+
+    fn tv(&self) -> VecDeque<&Tyvar> {
+       self.t.tv()
+    }
+}
+
+fn new_t_var(k: Kind, names: &mut VarNames) -> Type {
+    let new_name = names.next().expect("No new var name");
+    t_var(&new_name, k)
+}
+
+pub fn fresh_inst(s: &Scheme, names: &mut VarNames) -> Type {
+    let ts : Vec<Type> = s.kinds.iter().cloned().map(|k| new_t_var(k, names)).collect();
+    s.t.inst(&ts)
+}
+
+pub trait Instantiate {
+    fn inst(&self, ts: &Vec<Type>) -> Self;
+}
+
+impl Instantiate for Type {
+    fn inst(&self, ts:&Vec<Type>) -> Self {
+        match self {
+            Type::TAp(l, r) =>
+                Type::TAp(Box::new(l.inst(ts)),
+                          Box::new(r.inst(ts))),
+            Type::TGen(n) => ts[*n].clone(),
+            t => t.clone(),
+        }
     }
 }
 
 #[cfg(test)]
-mod tests_mgu {
+mod tests {
     use super::*;
+
+    #[test]
+    fn test_arity() {
+        assert_eq!(arity(&t_var_0("a")), 0);
+        assert_eq!(arity(&t_int()), 0);
+        assert_eq!(arity(&t_fun(t_int(), t_int())), 1);
+        assert_eq!(arity(&t_fun_seq(&[t_int(), t_int(), t_int()])), 2);
+    }
 
     #[test]
     fn test_mgu() {
@@ -510,149 +651,6 @@ mod tests_mgu {
     //         Type::fun(Type::var("c"), Type::var("d")));
     //     assert_eq!(result, expect);
     // }
-}
-
-
-#[derive(Clone)]
-pub struct VarNames<'a> {
-    value: String,
-    excluded: HashSet<&'a String>
-}
-
-impl<'a> VarNames<'a> {
-    pub fn new() -> VarNames<'a> {
-        VarNames {
-            value: String::from(""),
-            excluded: HashSet::new()
-        }
-    }
-
-    pub fn excluding<T>(names: T) -> VarNames<'a>
-        where T: Iterator<Item=&'a String> {
-        VarNames {
-            value: String::from(""),
-            excluded: names.collect(),
-        }
-    }
-
-    pub fn exclude(mut self, name: &'a String) -> VarNames<'a> {
-        self.excluded.insert(name);
-        self
-    }
-
-    pub fn exclude_all<T>(mut self, names: T) -> VarNames<'a>
-        where T: Iterator<Item = &'a String>
-    {
-        self.excluded.extend(names);
-        self
-    }
-}
-
-impl<'a> Iterator for VarNames<'a> {
-    type Item = String;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut next : String = next_string(&self.value);
-        while self.excluded.contains(&next) {
-            next = next_string(&next);
-        }
-        self.value = next;
-        Some(self.value.clone())
-    }
-}
-
-fn next_string(s: &str) -> String {
-  match s.chars().rev().next() {
-    None => String::from("a"),
-    Some('z') => {
-      let mut t = next_string(&s[..s.len() - 1]);
-      t.push('a');
-      t
-    }
-    Some(c) => {
-      let mut t = String::from(&s[..s.len() - 1]);
-      t.push((c as u8 + 1) as char);
-      t
-    }
-  }
-}
-
-// #[cfg(test)]
-// mod tests_var_names {
-//     use super::*;
-// 
-//     #[test]
-//     fn test_excluding() {
-//         let f = Type::fun(
-//             Type::fun( Type::var("a"), Type::var("b")),
-//             Type::var("d"));
-//         let next_3 : Vec<String> = VarNames::new().exclude_all(f.var_names().into_iter().cloned()).into_iter().take(3).collect();
-//         let expected : Vec<String> = vec!(String::from("c"), String::from("e"), String::from("f"));
-//         assert_eq!(next_3, expected);
-//     }
-// }
-
-
-// This is a simplified version of the Scheme definition that appears in the reference paper
-// that doesn't take into account typeclasses: as a result,
-// Qual Type is simply replaced by Type.
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
-#[derive(Eq)]
-pub struct Scheme {
-    pub kinds: Vec<Kind>,
-    pub t: Type,
-}
-
-impl fmt::Display for Scheme {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "Scheme{{kinds: {:?}, t: {}}}", self.kinds, self.t)
-  }
-}
-
-// If vs is None, quantify all type variables in t.
-pub fn quantify(vs: Option<Vec<Tyvar>>, t: &Type) -> Scheme {
-    let vs_ : VecDeque<&Tyvar> = match vs {
-        None => t.tv(),
-        Some(vs) => t.tv().into_iter().filter(|v| vs.contains(v)).collect(),
-    };
-    let ks : Vec<Kind> = vs_.iter().map(|&v| v.kind()).cloned().collect();
-    let s : Subst = Subst::from_iter(vs_.into_iter().cloned().zip((0..).into_iter().map(t_gen)));
-    
-    Scheme {
-        kinds: ks,
-        t: t.apply_substitution(&s),
-    }
-}
-
-
-impl Types for Scheme {
-    fn apply_substitution(&self, subst: &Subst) -> Self {
-       Scheme {
-           kinds: self.kinds.clone(),
-           t: self.t.apply_substitution(subst),
-       }
-    }
-
-    fn tv(&self) -> VecDeque<&Tyvar> {
-       self.t.tv()
-    }
-}
-
-fn new_t_var(k: Kind, names: &mut VarNames) -> Type {
-    let new_name = names.next().expect("No new var name");
-    t_var(&new_name, k)
-}
-
-pub fn fresh_inst(s: &Scheme, names: &mut VarNames) -> Type {
-    let ts : Vec<Type> = s.kinds.iter().cloned().map(|k| new_t_var(k, names)).collect();
-    s.t.inst(&ts)
-}
-
-#[cfg(test)]
-mod tests_scheme {
-    use super::*;
 
     #[test]
     fn test_quantify() {
@@ -704,22 +702,5 @@ mod tests_scheme {
         let i = fresh_inst(&sch, &mut candidates);
         let expect = t_fun(t_fun(t_var_0("a"), t_var_0("b")), t_var_0("b"));
         assert_eq!(i, expect);
-    }
-}
-
-
-pub trait Instantiate {
-    fn inst(&self, ts: &Vec<Type>) -> Self;
-}
-
-impl Instantiate for Type {
-    fn inst(&self, ts:&Vec<Type>) -> Self {
-        match self {
-            Type::TAp(l, r) =>
-                Type::TAp(Box::new(l.inst(ts)),
-                          Box::new(r.inst(ts))),
-            Type::TGen(n) => ts[*n].clone(),
-            t => t.clone(),
-        }
     }
 }

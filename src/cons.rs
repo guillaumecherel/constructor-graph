@@ -224,7 +224,7 @@ pub fn uncat_cons(cons: &Cons) -> Cons {
 }
 
 pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Type)>) -> String {
-    println!("SCRIPT_CONS {}", c);
+    //println!("SCRIPT_CONS {}", c);
     // match Pair(f, x)
     run_pair(c, run_any, run_any,
         |f, g| format!("{}\n{}",

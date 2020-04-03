@@ -4,7 +4,7 @@ use std::fmt;
 use std::iter;
 
 use crate::type_sy::{VarNames, Type, var_names, arity};
-use crate::type_sy::{t_double, t_var_0, t_fun, t_fun_seq, t_con, t_pair, t_list_t};
+use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con};
 
 #[derive(PartialEq)]
 #[derive(Eq)]
@@ -249,42 +249,13 @@ fn indent(width: usize, txt: &str) -> String {
     result
 }
 
-pub fn test_cons() -> Vec<(String, Type)> {
+pub fn cons_test() -> Vec<(String, Type)> {
     vec![
         // A: A
         (String::from("ConsA"), t_con("A")),
         // B: A -> B
         (String::from("ConsB"), t_fun(t_con("A"), t_con("B"))),
         (String::from("go"), t_fun(t_con("B"), t_con("SCRIPT"))),
-    ]
-}
-
-pub fn test_cons_2() -> Vec<(String, Type)> {
-    vec![
-        (String::from("netlogo_source"), t_con("NetlogoSource")),
-        (String::from("scala_source"), t_con("ScalaSource")),
-        (String::from("netlogo_setup"), t_con("Setup")),
-        (String::from("seed"), t_con("Seed")),
-        (String::from("unit_domain"), t_con("Domain")),
-        (String::from("uniform_prior"), t_con("Prior")),
-        (String::from("lhsSampleSize"), t_con("LhsSampleSize")),
-        (String::from("some_bounds"), t_list_t(t_pair(t_double(), t_double()))),
-        (String::from("bounded_domain"),
-            t_fun_seq(&[t_list_t(t_pair(t_double(), t_double())), t_con("Domain")])),
-        (String::from("netlogo"),
-            t_fun_seq(&[t_con("NetlogoSource"), t_con("Setup"), t_con("Seed"), t_con("Model")])),
-        (String::from("scala_model"),
-            t_fun_seq(&[t_con("ScalaSource"), t_con("Seed"), t_con("Model")])),
-        (String::from("lhs"),
-            t_fun_seq(&[t_con("Domain"), t_con("LhsSampleSize"), t_con("Seed"), t_con("Sample")])),
-        (String::from("direct_sampling"),
-            t_fun_seq(&[t_con("Model"), t_con("Sample"), t_con("Sample")])),
-        (String::from("median"),
-            t_fun_seq(&[t_con("Sample"), t_con("Median")])),
-        (String::from("abc"),
-            t_fun_seq(&[t_con("Model"), t_con("Prior"), t_con("Posterior")])),
-        (String::from("calibrate"), t_fun(t_con("Posterior"), t_con("SCRIPT"))),
-        (String::from("agg_stats"), t_fun(t_con("Median"), t_con("SCRIPT"))),
     ]
 }
 

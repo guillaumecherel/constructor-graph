@@ -78,6 +78,7 @@ impl Type {
     pub fn fun_target(&self) -> Option<&Type> {
         self.fun_split().map(|(_, tgt)| tgt)
     }
+
 }
 
 impl fmt::Display for Type {
@@ -90,15 +91,15 @@ impl fmt::Display for Type {
                     Type::TCon(Tycon(symbol, _)) => match &symbol[..] {
                         "->" => write!(f, "({} -> {})", lr, r),
                         "(,)"=> write!(f, "({}, {})", lr, r),
-                        _ => panic!("I don't know how to format {:?}", self),
+                        x => write!(f, "(({} {}) {})", x, lr, r),
                     }
-                    _ => panic!("I don't know how to format {:?}", self),
+                    _ => write!(f, "(({} {}) {})", ll, lr, r),
                 }
                 Type::TCon(Tycon(symbol, _)) => match &symbol[..] {
-                    "[]" => write!(f, "[{}]", r.to_string()),
-                    _ => panic!("I don't know how to format {:?}", self),
+                    "[]" => write!(f, "[{}]", r),
+                    x => write!(f, "({} {})", x, r),
                 }
-                _ => panic!("I don't know how to format {:?}", self),
+                _ => write!(f, "({} {})", l, r),
             }
             Type::TGen(i) => write!(f, "TGen {}", i),
         }
@@ -164,7 +165,7 @@ pub fn t_param(name: &str, xs: &[Type]) -> Type {
     } else {
        Type::TAp(
            Box::new(t_param(name, &xs[..xs.len() - 1])),
-           Box::new(xs[xs.len()].clone()))
+           Box::new(xs[xs.len() - 1].clone()))
     }
 }
 

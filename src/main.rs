@@ -1,5 +1,6 @@
 mod cat;
 mod cons;
+mod openmole;
 mod util;
 mod type_sy;
 
@@ -39,7 +40,8 @@ impl Default for OutputType {
 
 fn main() {
     let args = Cli::from_args();
-    let input_cons = cons::test_cons_2();
+    //let input_cons = cons::cons_test();
+    let input_cons = openmole::cons();
     let script = |c: &Cons| -> String { cons::script_cons(c, &input_cons) };
     let cons = cons::cat_cons(input_cons.clone());
     let morph_schemes = morph_schemes_from_cons(&cons);

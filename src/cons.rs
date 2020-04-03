@@ -223,17 +223,8 @@ pub fn uncat_cons(cons: &Cons) -> Cons {
     .unwrap()
 }
 
-pub fn test_cons() -> Vec<(String, Type)> {
-    vec![
-        // A: A
-        (String::from("ConsA"), t_con("A")),
-        // B: A -> B
-        (String::from("ConsB"), t_fun(t_con("A"), t_con("B"))),
-        (String::from("go"), t_fun(t_con("B"), t_con("SCRIPT"))),
-    ]
-}
-
 pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Type)>) -> String {
+    println!("SCRIPT_CONS {}", c);
     // match Pair(f, x)
     run_pair(c, run_any, run_any,
         |f, g| format!("{}\n{}",
@@ -246,11 +237,26 @@ pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Type)>) -> String {
 
 fn indent(width: usize, txt: &str) -> String {
     let indent: String = iter::repeat(" ").take(width).collect();
-    txt.lines().flat_map(|l|
-        indent.chars()
-        .chain(l.chars())
-        .chain("\n".chars()))
-    .collect()
+    let mut lines = txt.lines();
+    let mut result: String = lines.next().map(|l| String::from(&indent) + l).unwrap_or("".to_string()).to_string();
+
+    for l in lines {
+        result.push_str("\n");
+        result.push_str(&indent);
+        result.push_str(l);
+    }
+
+    result
+}
+
+pub fn test_cons() -> Vec<(String, Type)> {
+    vec![
+        // A: A
+        (String::from("ConsA"), t_con("A")),
+        // B: A -> B
+        (String::from("ConsB"), t_fun(t_con("A"), t_con("B"))),
+        (String::from("go"), t_fun(t_con("B"), t_con("SCRIPT"))),
+    ]
 }
 
 pub fn test_cons_2() -> Vec<(String, Type)> {

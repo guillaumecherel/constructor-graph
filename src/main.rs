@@ -39,9 +39,7 @@ impl Default for OutputType {
 
 fn main() {
     let args = Cli::from_args();
-    // let input_cons = cons::test_cons_2();
-    // let script = |c: &Cons| -> String { cons::test_script(c, &input_cons) };
-    let input_cons = cons::test_cons();
+    let input_cons = cons::test_cons_2();
     let script = |c: &Cons| -> String { cons::script_cons(c, &input_cons) };
     let cons = cons::cat_cons(input_cons.clone());
     let morph_schemes = morph_schemes_from_cons(&cons);

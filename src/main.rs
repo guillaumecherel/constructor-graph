@@ -41,8 +41,8 @@ fn main() {
     let args = Cli::from_args();
     // let input_cons = cons::test_cons_2();
     // let script = |c: &Cons| -> String { cons::test_script(c, &input_cons) };
-    let input_cons = cons::test_cons_2();
-    let script = |c: &Cons| -> String { cons::test_script(c, &input_cons) };
+    let input_cons = cons::test_cons();
+    let script = |c: &Cons| -> String { cons::script_cons(c, &input_cons) };
     let cons = cons::cat_cons(input_cons.clone());
     let morph_schemes = morph_schemes_from_cons(&cons);
     match args.output_type {
@@ -148,10 +148,7 @@ where F: Fn(&Cons) -> String,
 
     println!("---- Script ----");
 
-    let complete = pair(cur_morphism.cons, Id);
-    println!("COMPLETE {}", &complete);
-    println!("UNCAT {}", uncat_cons(&complete));
-
-    println!("{}", script(&uncat_cons(&complete)));
+    let the_script = pair(cur_morphism.cons, Id);
+    println!("{}", script(&uncat_cons(&the_script)));
 }
 

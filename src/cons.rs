@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::fmt;
+use std::iter;
 
 use crate::type_sy::{VarNames, Type, var_names, arity};
 use crate::type_sy::{t_double, t_var_0, t_fun, t_fun_seq, t_con, t_pair, t_list_t};
@@ -134,100 +135,92 @@ pub fn cat_cons(xs: Vec<(String, Type)>) -> Vec<(String, Cons, Type)> {
 // (f, g) -> uncat_cons(uncat_cons(f), uncat_cons(g))
 // Data(x) -> Data(x)
 pub fn uncat_cons(cons: &Cons) -> Cons {
-    //println!("UNCAT_CONS {}", cons);
-    
-    let result =
-        // match Pair(Pair(Pair(Comp, c), d), e)
-        run_pair(cons,
-            |l| run_pair(l,
-                |ll| run_pair(ll, run_comp, run_any, |_, llr| llr),
-                run_any,
-                |a, b| (a,b)),
+    // match Pair(Pair(Pair(Comp, c), d), e)
+    run_pair(cons,
+        |l| run_pair(l,
+            |ll| run_pair(ll, run_comp, run_any, |_, llr| llr),
             run_any,
-            |(c, d), e| {
-                // println!("Reducing Comp {}", cons);
-                uncat_cons(
-                &Pair(Box::new(uncat_cons(c)),
-                     Box::new(
-                         uncat_cons(&Pair(
-                             Box::new(uncat_cons(d)),
-                             Box::new(uncat_cons(e)))))))
+            |a, b| (a,b)),
+        run_any,
+        |(c, d), e| {
+            // println!("Reducing Comp {}", cons);
+            uncat_cons(
+            &Pair(Box::new(uncat_cons(c)),
+                 Box::new(
+                     uncat_cons(&Pair(
+                         Box::new(uncat_cons(d)),
+                         Box::new(uncat_cons(e)))))))
+        })
+    // // match Pair(Pair(Comp, Pair(Ap, x)), f)
+    // .or_else(
+    //     || run_pair(cons,
+    //         |l| run_pair(l,
+    //             run_comp,
+    //             |lr| run_pair(lr, run_ap, run_any, |_, x| x),
+    //             |_, x| x),
+    //         run_any,
+    //         |x, f| {
+    //             // println!("Reducing Comp Ap x f {}", cons);
+    //             uncat_cons(&pair(uncat_cons(f), uncat_cons(x)))
+    //         })
+    // )
+    // match Pair(Pair(Comp, Id), d)
+    // .or_else(
+    //     || run_pair(cons,
+    //         |l| run_pair(l, run_comp, run_id, |_, _| ()),
+    //         run_any,
+    //         |_, d| {
+    //             // println!("Reducing Comp Id x {}", cons);
+    //             uncat_cons(d)
+    //         })
+    // )
+    // // match Pair(Pair(Comp, d), Id)
+    // .or_else(
+    //     || run_pair(cons,
+    //         |l| run_pair(l, run_comp, run_any, |_, d| d),
+    //         run_id,
+    //         |d, _| {
+    //             // println!("Reducing Comp x Id {}", cons);
+    //             uncat_cons(d)
+    //         })
+    // )
+    // match Pair(Pair(Ap, d), e)
+    .or_else(
+        || run_pair(cons,
+           |l| run_pair(l, run_ap, run_any, |_, lr| lr),
+           run_any,
+           |d, e| {
+                // println!("Reducing Ap {}", cons);
+                uncat_cons(&Pair(Box::new(uncat_cons(e)), Box::new(uncat_cons(d))))
+           })
+    )
+    // match Pair(Id, x)
+    .or_else(
+        || run_pair(cons, run_id, run_any,
+            |_, x| {
+                // println!("Reducing Id {}", cons);
+                uncat_cons(x)
             })
-        // match Pair(Pair(Comp, Pair(Ap, x)), f)
-        .or_else(
-            || run_pair(cons,
-                |l| run_pair(l,
-                    run_comp,
-                    |lr| run_pair(lr, run_ap, run_any, |_, x| x),
-                    |_, x| x),
-                run_any,
-                |x, f| {
-                    // println!("Reducing Comp Ap x f {}", cons);
-                    uncat_cons(&pair(uncat_cons(f), uncat_cons(x)))
-                })
-        )
-        // match Pair(Pair(Comp, Id), d)
-        .or_else(
-            || run_pair(cons,
-                |l| run_pair(l, run_comp, run_id, |_, _| ()),
-                run_any,
-                |_, d| {
-                    // println!("Reducing Comp Id x {}", cons);
-                    uncat_cons(d)
-                })
-        )
-        // match Pair(Pair(Comp, d), Id)
-        .or_else(
-            || run_pair(cons,
-                |l| run_pair(l, run_comp, run_any, |_, d| d),
-                run_id,
-                |d, _| {
-                    // println!("Reducing Comp x Id {}", cons);
-                    uncat_cons(d)
-                })
-        )
-        // match Pair(Pair(Ap, d), e)
-        .or_else(
-            || run_pair(cons,
-               |l| run_pair(l, run_ap, run_any, |_, lr| lr),
-               run_any,
-               |d, e| {
-                    // println!("Reducing Ap {}", cons);
-                    uncat_cons(&Pair(Box::new(uncat_cons(e)), Box::new(uncat_cons(d))))
-               })
-        )
-        // match Pair(Id, x)
-        .or_else(
-            || run_pair(cons, run_id, run_any,
-                |_, x| {
-                    // println!("Reducing Id {}", cons);
-                    uncat_cons(x)
-                })
-        )
-        // match Pair(Comp, Id)
-        .or_else(
-            || run_pair(cons, run_comp, run_id,
-                |_, _| {
-                    // println!("Reducing Comp Id {}", cons);
-                    Id
-                })
-        )
-        // match Pair(f, g)
-        .or_else(
-            || run_pair(cons, run_any, run_any,
-               |f, g| {
-                   // println!("Reducing Pair {}", cons);
-                   Pair(Box::new(uncat_cons(f)), Box::new(uncat_cons(g)))
-               })
-        )
-        // match Data(x), Comp, Ap
-        .or_else(|| Some(cons.clone()))
-        .unwrap();
-
-    //println!("CONS {}\nREDUCED TO {}", cons, &result);
-
-    result
-
+    )
+    // // match Pair(Comp, Id)
+    // .or_else(
+    //     || run_pair(cons, run_comp, run_id,
+    //         |_, _| {
+    //             // println!("Reducing Comp Id {}", cons);
+    //             Id
+    //         })
+    // )
+    // match Pair(f, g)
+    .or_else(
+        || run_pair(cons, run_any, run_any,
+           |f, g| {
+               // println!("Reducing Pair {}", cons);
+               Pair(Box::new(uncat_cons(f)), Box::new(uncat_cons(g)))
+           })
+    )
+    // match Data(x), Comp, Ap
+    .or_else(|| Some(cons.clone()))
+    .unwrap()
 }
 
 pub fn test_cons() -> Vec<(String, Type)> {
@@ -240,25 +233,24 @@ pub fn test_cons() -> Vec<(String, Type)> {
     ]
 }
 
-pub fn test_script(c: &Cons, cons_def: &Vec<(String, Type)>) -> String {
-    // match Pair(Data(2), x)
-    run_pair(c,
-        |l| run_data(l, |a| a).filter(|&&cons_id| cons_id == 2 as usize),
-        run_any,
-        |_, x| test_script(x, cons_def))
-    .or_else( ||
-    // match Pair(Data(1), x)
-        run_pair(c,
-            |l| run_data(l, |a| a).filter(|&&cons_id| cons_id == 1 as usize),
-            run_any,
-            |cons_id, x| format!("{} ({})", cons_def[*cons_id].0, test_script(&x, cons_def)))
-    )
-    .or_else( ||
-    // match Data(0)
-            run_data(c, |a| a).filter(|&&cons_id| cons_id == 0 as usize)
-            .map(|cons_id| format!("{}", cons_def[*cons_id].0))
-    )
-    .expect(&format!("I don't know how to write test_script for {}", &c))
+pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Type)>) -> String {
+    // match Pair(f, x)
+    run_pair(c, run_any, run_any,
+        |f, g| format!("{}\n{}",
+            script_cons(f, cons_def),
+            indent(2, &script_cons(g, cons_def))))
+    // match Data(i)
+    .or_else( || run_data(c, |&i| format!("{}", cons_def[i].0)) )
+    .expect(&format!("I don't know how to write script for {}", &c))
+}
+
+fn indent(width: usize, txt: &str) -> String {
+    let indent: String = iter::repeat(" ").take(width).collect();
+    txt.lines().flat_map(|l|
+        indent.chars()
+        .chain(l.chars())
+        .chain("\n".chars()))
+    .collect()
 }
 
 pub fn test_cons_2() -> Vec<(String, Type)> {
@@ -289,83 +281,6 @@ pub fn test_cons_2() -> Vec<(String, Type)> {
         (String::from("agg_stats"), t_fun(t_con("Median"), t_con("SCRIPT"))),
     ]
 }
-// 
-
-
-// impl Cons {
-//     pub fn arity(&self) -> u32 { arity(&self.1)} }
-// 
-//     pub fn fun_source(&self) -> Option<&Type> {
-//        let Cons(_, t) = self;
-//        t.fun_source()
-//     }
-// 
-//     pub fn fun_target(&self) -> Option<&Type> {
-//        let Cons(_, t) = self;
-//        t.fun_target()
-//     }
-// }
-
-// impl fmt::Display for Cons {
-//   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//     match self {
-//       Cons(name, typ) => write!(f, "{}: {}", name, typ),
-//     }
-//   }
-// }
-
-// fn chain_forward() -> MorphScheme {
-//     MorphScheme::new(">",
-//         t_fun(t_var_0("a"), t_var_0("b")),
-//         t_fun(
-//             t_fun(t_var_0("b"), t_var_0("c")),
-//             t_fun(t_var_0("a"), t_var_0("c"))
-//         )
-//     )// }
-//
-// fn chain_backward() -> MorphScheme {
-//     MorphScheme::new("<",
-//         t_fun(t_var_0("b"), t_var_0("c")),
-//         t_fun(
-//             t_fun(t_var_0("a"), t_var_0("b")),
-//             t_fun(t_var_0("a"), t_var_0("c"))
-//         )
-//     )
-// }
-
-// // Create a morphism scheme (.x): ((a -> b) -> b) from the given constructor x: a such that (.x) g = g x.
-// fn ap(Cons(label, typ): &Cons) -> MorphScheme {
-//   let mut candidates = VarNames::excluding(var_names(typ).into_iter());
-//   let new_var = t_var_0(&candidates.next().expect("No available var name."));
-//   let label = ["&", &label].concat();
-//   MorphScheme::new(&label, t_fun(typ.clone(), new_var.clone()), new_var)
-// }
-
-// // Return a Constructor turns "a -> b" into "a1 -> ... -> an -> b" given
-// // the term "a1 -> ... -> an -> a". If there is a nullary term "a", then "a -> b"
-// // becomes "b".
-// fn construct(term: &Cons) -> MorphScheme {
-//     let mut ms: MorphScheme = iter::successors(
-//         Some((0, MorphScheme::ap(term))),
-//         |(length,t)|
-//             if *length >= term.arity() {
-//                 None
-//             } else {
-//                 MorphScheme::chain_backward().and_then(t)
-//                     .map(|m| (length + 1, m))
-//                     .ok()
-//             }
-//         )
-//     .map(|(_, t)| t)
-//     .last()
-//     .expect("There should be at least one element in the iterator");
-// 
-//     ms.name = term.0.clone();
-// 
-//     ms
-// }
- 
-
 
 
 #[cfg(test)]

@@ -2,8 +2,9 @@
 
 use std::fmt;
 use std::iter;
+use std::collections::HashSet;
 
-use crate::type_sy::{VarNames, Type, var_names, arity};
+use crate::type_sy::{VarNames, Type, var_names, arity, mgu};
 use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con};
 
 #[derive(PartialEq)]
@@ -102,25 +103,16 @@ fn using(x: Cons, t: &Type) -> (Cons, Type) {
     let mut candidates = VarNames::excluding(var_names(t).into_iter());
     let new_var = t_var_0(&candidates.next().expect("No available var name."));
 
-    let mut args_types = vec![];
-    let mut cur_type = t;
-    let mut fun_types = cur_type.fun_split();
+    let (mut args_types, cur_type) = t.split();
+    
+    let res_source = t_fun(cur_type.clone(), new_var.clone());
 
-    while fun_types.is_some() {
-        let (src, tgt) = fun_types.unwrap();
-        args_types.push(src.clone());
-        cur_type = tgt;
-        fun_types = cur_type.fun_split();
-    }
+    args_types.push(&new_var);
+    let res_target = t_fun_seq(&args_types.into_iter().cloned().collect::<Vec<Type>>());
 
-    let ret_source = t_fun(cur_type.clone(), new_var.clone());
+    let res_type = t_fun(res_source, res_target);
 
-    args_types.push(new_var);
-    let ret_target = t_fun_seq(&args_types);
-
-    let ret_type = t_fun(ret_source, ret_target);
-
-    (c, ret_type)
+    (c, res_type)
 }
 
 pub fn cat_cons(xs: Vec<(String, Type)>) -> Vec<(String, Cons, Type)> {
@@ -247,6 +239,23 @@ fn indent(width: usize, txt: &str) -> String {
     }
 
     result
+}
+
+//Returns a list of types for which no constructor was found
+pub fn list_no_cons<'a>(types: &'a[&'a Type]) -> Vec<&'a Type> {
+    let mut input_types = HashSet::new();
+    let mut output_types = HashSet::new();
+
+    for t in types {
+        let (args, out) = t.split();
+        input_types.extend(args.into_iter());
+        output_types.insert(out);
+    }
+
+    // keep all types in input_types that unify with no type of output_typese.
+    input_types.into_iter()
+    .filter(|it| output_types.iter().all(|ot| mgu(it, ot).is_err()))
+    .collect()
 }
 
 pub fn cons_test() -> Vec<(String, Type)> {

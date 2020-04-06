@@ -17,7 +17,7 @@ use cat::{
     morph_schemes_from_cons, MorphScheme, Morphism, morphisms_bf, morphisms_from_source,
 };
 
-use cons::{Cons, Cons::Id, uncat_cons, pair};
+use cons::{Cons, Cons::Id, uncat_cons, pair, list_no_cons};
 
 #[derive(StructOpt)]
 #[derive(Debug)]
@@ -43,13 +43,25 @@ fn main() {
     //let input_cons = cons::cons_test();
     let input_cons = openmole::cons();
     let script = |c: &Cons| -> String { cons::script_cons(c, &input_cons) };
-    let cons = cons::cat_cons(input_cons.clone());
-    let morph_schemes = morph_schemes_from_cons(&cons);
-    match args.output_type {
-       None => output_info(&input_cons, &morph_schemes),
-       Some(OutputType::Info) => output_info(&input_cons, &morph_schemes),
-       Some(OutputType::GraphViz) => output_gv(&morph_schemes),
-       Some(OutputType::Interact) => interact(&morph_schemes, script),
+
+    // Types that have no constructors:
+    let cons_types = &input_cons.iter().map(|(_,t)| t).collect::<Vec<&Type>>();
+    let no_cons = list_no_cons(cons_types);
+    if !no_cons.is_empty() {
+        eprintln!("The following types have no constructors:");
+        for t in no_cons {
+            eprintln!("    {}", t);
+        }
+    } else {
+
+        let cons = cons::cat_cons(input_cons.clone());
+        let morph_schemes = morph_schemes_from_cons(&cons);
+        match args.output_type {
+           None => output_info(&input_cons, &morph_schemes),
+           Some(OutputType::Info) => output_info(&input_cons, &morph_schemes),
+           Some(OutputType::GraphViz) => output_gv(&morph_schemes),
+           Some(OutputType::Interact) => interact(&morph_schemes, script),
+        }
     }
 }
 

@@ -11,6 +11,7 @@ pub fn y() -> Type {t_var_0("y")}
 
 pub fn cons() -> Vec<(String, Type)> {
     vec![
+        // calibrate: PosteriorDistribution -> SCRIPT
         (String::from("calibrate"),
             t_fun_seq(&[t_param("PosteriorDistribution", &[x(), y()]), t_con("SCRIPT")])),
         // manual_input: ManualInput
@@ -22,6 +23,9 @@ pub fn cons() -> Vec<(String, Type)> {
         // manual_int: ManualInput -> Int
         (String::from("manual_int"), 
             t_fun_seq(&[t_con("ManualInput"), t_int()])),
+        // manual_double: ManualInput -> Double
+        (String::from("manual_double"),
+            t_fun_seq(&[t_con("ManualInput"), t_double()])),
         // manual_address: ManualInput -> Address
         (String::from("manual_address"), 
             t_fun_seq(&[t_con("ManualInput"), t_con("Address")])),

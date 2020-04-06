@@ -79,6 +79,21 @@ impl Type {
         self.fun_split().map(|(_, tgt)| tgt)
     }
 
+    // Returns (vec![a1, a2.., an], b) given a type a1 -> ... -> an -> b.
+    pub fn split(&self) -> (Vec<&Type>, &Type) {
+        let mut args_types = vec![];
+        let mut cur_type = self;
+        let mut fun_types = cur_type.fun_split();
+
+        while fun_types.is_some() {
+            let (src, tgt) = fun_types.unwrap();
+            args_types.push(src);
+            cur_type = tgt;
+            fun_types = cur_type.fun_split();
+        }
+
+        (args_types, cur_type)
+    }
 }
 
 impl fmt::Display for Type {
@@ -160,13 +175,18 @@ pub fn t_var_0(name: &str) -> Type { Type::TVar(Tyvar(String::from(name), Kind::
 
 // Parameterized data type
 pub fn t_param(name: &str, xs: &[Type]) -> Type {
-    if xs.is_empty() {
-       t_con(name)
-    } else {
-       Type::TAp(
-           Box::new(t_param(name, &xs[..xs.len() - 1])),
-           Box::new(xs[xs.len() - 1].clone()))
+    fn go(name: &str, xs: &[Type], k: Kind) -> Type {
+        if xs.is_empty() {
+           Type::TCon(Tycon(String::from(name), k))
+        } else {
+           let tr = &xs[xs.len() - 1];
+           let k_ = Kind::KFun(Box::new(tr.kind().clone()), Box::new(k));
+           let tl = go(name, &xs[..xs.len() - 1], k_);
+           Type::TAp(Box::new(tl), Box::new(tr.clone()))
+        }
     }
+
+    go(name, xs, Kind::Star)
 }
 
 // List
@@ -273,9 +293,9 @@ impl HasKind for Type {
             Type::TVar(u) => u.kind(),
             Type::TAp(t, _) => match t.kind() {
                 Kind::KFun(_, k) => k,
-                Kind::Star => panic!("Code should never pass here."),
+                Kind::Star => panic!("I don't know the kind of {}.", t),
             }
-            Type::TGen(_) => panic!("Code should never pass here: cannot know the kind of TGen outside of a Scheme."),
+            Type::TGen(_) => panic!("Cannot know the kind of TGen outside of a Scheme."),
         }
     }
 }
@@ -543,6 +563,14 @@ impl Instantiate for Type {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_has_kind() {
+        use Kind::*;
+        assert_eq!(t_var_0("a").kind(), &Star);
+        assert_eq!(t_param("A", &[t_var_0("a")]).kind(), &Star);
+        assert_eq!(t_param("a", &[t_var_0("a"), t_var_0("b")]).kind(), &Star);
+    }
 
     #[test]
     fn test_arity() {

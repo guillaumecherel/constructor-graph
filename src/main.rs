@@ -53,7 +53,6 @@ fn main() {
             eprintln!("    {}", t);
         }
     } else {
-
         let cons = cons::cat_cons(input_cons.clone());
         let morph_schemes = morph_schemes_from_cons(&cons);
         match args.output_type {

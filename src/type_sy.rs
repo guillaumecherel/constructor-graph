@@ -383,6 +383,19 @@ fn var_bind(u: &Tyvar, t: &Type) -> Result<Subst, String> {
     }
 }
 
+// Return (a1, b1) where a1 and b1 are equivalenet to (a, b) up to
+// a substitution of type variable names, and a1 and b1 share no
+// variable name in common.
+pub fn distinguish(a: &Type, b: &Type) -> (Type, Type) {
+    let s_a = quantify(None, &a);
+    let s_b = quantify(None, &b);
+
+    let mut vn = VarNames::new();
+    let a1 = fresh_inst(&s_a, &mut vn);
+    let b1 = fresh_inst(&s_b, &mut vn);
+
+    (a1, b1)
+}
 
 pub trait Types {
     fn apply_substitution(&self, subst: &Subst) -> Self;

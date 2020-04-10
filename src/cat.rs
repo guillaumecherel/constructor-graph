@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::iter::Iterator;
 use std::fmt;
@@ -74,12 +75,14 @@ pub fn morphisms_bf(sources: &Vec<&Type>, mss: &Vec<MorphScheme>) -> MorphismsBF
     let q = sources.iter().flat_map(|t| morphisms_from_source(t, mss)).collect();
     MorphismsBF {
         queue: q,
+        visited: HashSet::new(),
         morph_schemes: mss.clone(),
     }
 }
 
 pub struct MorphismsBF {
     pub queue: VecDeque<Morphism>,
+    pub visited: HashSet<Morphism>,
     pub morph_schemes: Vec<MorphScheme>,
 }
 
@@ -90,15 +93,115 @@ impl Iterator for MorphismsBF {
         match self.queue.pop_front() {
             None => None,
             Some(m) => {
-                let next = morphisms_from_source(&m.target, &self.morph_schemes);
-                self.queue.extend(next.into_iter());
+                let next: Vec<Morphism> = morphisms_from_source(&m.target, &self.morph_schemes)
+                    .into_iter()
+                    .filter(|n| !self.visited.contains(n))
+                    .collect();
+                for n in next.into_iter() {
+                    self.queue.push_back(n.clone());
+                    self.visited.insert(n);
+                }
                 Some(m)
             }
         }
     }
 }
 
+// Iterator listing the morphisms starting from the given sources and exploring the
+// induced graph in a depth first way.
+pub fn morphisms_df(sources: &Vec<&Type>, mss: &Vec<MorphScheme>) -> MorphismsDF {
+    let q = sources.iter().flat_map(|t| morphisms_from_source(t, mss)).collect();
+    MorphismsDF {
+        stack: q,
+        visited: HashSet::new(),
+        morph_schemes: mss.clone(),
+    }
+}
 
+pub struct MorphismsDF {
+    pub stack: Vec<Morphism>,
+    pub visited: HashSet<Morphism>,
+    pub morph_schemes: Vec<MorphScheme>,
+}
+
+impl Iterator for MorphismsDF {
+    type Item = Morphism;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.stack.pop() {
+            None => None,
+            Some(m) => {
+                let next: Vec<Morphism> = morphisms_from_source(&m.target, &self.morph_schemes)
+                    .into_iter()
+                    .filter(|n| !self.visited.contains(n))
+                    .collect();
+                for n in next.into_iter() {
+                    self.stack.push(n.clone());
+                    self.visited.insert(n);
+                }
+                Some(m)
+            }
+        }
+    }
+}
+
+// // Iterator listing paths starting from the given sources and exploring the
+// // induced graph in a breadth first way.
+// pub fn morphisms_paths(sources: &Vec<&Type>, mss: &Vec<MorphScheme>, end_node: Type) -> Paths {
+//     let q = sources.iter().cloned().collect();
+//     Paths {
+//         queue: q,
+//         visited: HashMap::new(),
+//         morph_schemes: mss.clone(),
+//         end_node: end_node,
+//     }
+// }
+// 
+// pub struct Paths {
+//     pub queue: VecDeque<Type>,
+//     pub visited: HashMap<Type, Vec<Morphism>>,
+//     pub morph_schemes: Vec<MorphScheme>,
+//     pub end_node: Type,
+// }
+// 
+// impl Paths {
+//     pub reconstruct_paths() -> Vec<Vec<Morphism>>{
+//         
+//     }
+// }
+// 
+// impl Iterator for Paths {
+//     type Item = Vec<Morphism>;
+// 
+//     fn next(&mut self) -> Option<Self::Item> {
+//         loop {
+//             let cur_op = self.queue.pop_front();
+//             if cur_op.is_none() {
+//                 break None;
+//             } else {
+//                 let cur = cur_op.unwrap();
+//                 if cur == self.end_node {
+//                     break Some(cur);
+//                 } else {
+//                     let next =
+//                         morphisms_from_source(&last.target, &self.morph_schemes)
+//                         .into_iter()
+//                         .map(|n| {
+//                             let mut n1 = cur.clone();
+//                             n1.push(n.clone());
+//                             n1
+//                             });
+//                         // .filter(|n| !self.visited.contains(n))
+//                     for n in next.into_iter() {
+//                         self.queue.push_back(n);
+//                         // self.visited.insert(n);
+//                     }
+//                     continue;
+//                 }
+//             }
+//         }
+//     }
+// }
 
 //// MorphSchemes: Type machinery to instantiate morphisms from a given source type.
 
@@ -396,7 +499,7 @@ mod tests {
     //       [ (String::from("1"), t_nat())
     //       // 1: Int
     //       , (String::from("1"), t_int())
-    //       // f: Nat -> Int
+    //       // f: Nat -> Int
     //       , (String::from("f"), t_fun(t_nat(),t_int()))
     //       // g: a -> b
     //       , (String::from("g"), t_fun(t_var_0("a"), t_var_0("b")))

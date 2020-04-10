@@ -4,7 +4,7 @@ use std::fmt;
 use std::iter;
 use std::collections::HashSet;
 
-use crate::type_sy::{VarNames, Type, var_names, arity, mgu};
+use crate::type_sy::{VarNames, Type, var_names, arity, mgu, distinguish};
 use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con};
 
 #[derive(PartialEq)]
@@ -242,19 +242,25 @@ fn indent(width: usize, txt: &str) -> String {
 }
 
 //Returns a list of types for which no constructor was found
-pub fn list_no_cons<'a>(types: &'a[&'a Type]) -> Vec<&'a Type> {
+pub fn list_no_cons<'a>(cons: &'a[(String, Type)]) -> Vec<(&'a String, &'a Type)> {
     let mut input_types = HashSet::new();
     let mut output_types = HashSet::new();
 
-    for t in types {
+    for (n, t) in cons {
         let (args, out) = t.split();
-        input_types.extend(args.into_iter());
         output_types.insert(out);
+        for a in args.into_iter() {
+            input_types.insert((a, n));
+        }
     }
 
     // keep all types in input_types that unify with no type of output_typese.
     input_types.into_iter()
-    .filter(|it| output_types.iter().all(|ot| mgu(it, ot).is_err()))
+    .filter(|(it,_)| output_types.iter().all(|ot| {
+        let (itd, otd) = distinguish(it, ot);
+        mgu(&itd, &otd).is_err()
+    }))
+    .map(|(it, n)| (n, it))
     .collect()
 }
 

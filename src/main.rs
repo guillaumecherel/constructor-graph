@@ -14,7 +14,7 @@ use type_sy::{Type};
 use type_sy::{t_fun, t_con, t_var_0};
 
 use cat::{
-    morph_schemes_from_cons, MorphScheme, Morphism, morphisms_bf, morphisms_from_source,
+    morph_schemes_from_cons, MorphScheme, Morphism, morphisms_paths, morphisms_bf, morphisms_df, morphisms_from_source,
 };
 
 use cons::{Cons, Cons::Id, uncat_cons, pair, list_no_cons};
@@ -45,12 +45,11 @@ fn main() {
     let script = |c: &Cons| -> String { cons::script_cons(c, &input_cons) };
 
     // Types that have no constructors:
-    let cons_types = &input_cons.iter().map(|(_,t)| t).collect::<Vec<&Type>>();
-    let no_cons = list_no_cons(cons_types);
+    let no_cons = list_no_cons(&input_cons);
     if !no_cons.is_empty() {
         eprintln!("The following types have no constructors:");
-        for t in no_cons {
-            eprintln!("    {}", t);
+        for (n, t) in no_cons {
+            eprintln!("    {} from constructor {}", t, n);
         }
     } else {
         let cons = cons::cat_cons(input_cons.clone());
@@ -102,24 +101,25 @@ fn output_info(cons: &Vec<(String, Type)>, morph_schemes: &Vec<MorphScheme>) {
 fn output_gv(morph_schemes: &Vec<MorphScheme>) {
     let start = start_type();
 
-    let edges_set: HashSet<Morphism> =
-        morphisms_bf(&vec![&start], &morph_schemes).take(1000).collect();
-    println!("# !!! WARNING REMOVE TAKE !!!");
+    let paths =
+        morphisms_paths(&vec![&start], &morph_schemes, t_con("SCRIPT"));
 
     fn format_dot_edge(m: &Morphism) -> String {
         // "((-> Domain) Domain)" -> "Domain" [ label = "&unit_domain" ]
         format!("\"{src}\" -> \"{tgt}\" [ label=\"{name}\" ]",
-                src = m.source,
-                tgt = m.target,
+                src = m.source.fun_source().unwrap(),
+                tgt = m.target.fun_source().unwrap(),
                 name = m.name)
     }
 
     println!("digraph {{");
-    //println!("    node [ shape=point ] ");
-    //println!("    \"(SCRIPT -> a)\" [ shape=ellipse ]");
-    //println!("    \"SCRIPT\" [ shape=ellipse ]");
-    for m in edges_set {
-        println!("    {}", format_dot_edge(&m));
+    println!("    node [ shape=point ] ");
+    println!("    \"(SCRIPT -> SCRIPT)\" [ shape=ellipse label=START]");
+    println!("    \"SCRIPT\" [ shape=ellipse label=END]");
+    for p in paths {
+        for m in p {
+            println!("    {}", format_dot_edge(&m));
+        }
     }
     println!("}}");
 }

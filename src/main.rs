@@ -5,6 +5,7 @@ mod openmole;
 mod util;
 mod type_sy;
 
+use std::fs;
 use std::collections::HashSet;
 use std::io;
 use std::iter::Iterator;
@@ -44,7 +45,8 @@ impl Default for OutputType {
 fn main() {
     let args = Cli::from_args();
     //let input_cons = cons::cons_test();
-    let input_cons = openmole::cons();
+    //let input_cons = openmole::cons();
+    let input_cons = cons_from_file("openmole.cons").expect("Could not read cons input file.");
     let script = |c: &Cons| -> String { cons::script_cons(c, &input_cons) };
 
     // Types that have no constructors:
@@ -67,16 +69,16 @@ fn main() {
 }
 
 
-// fn terms_from_file(filename: String) -> Vec<Cons> {
-// 
-//     let input_stream = fs::read_to_string(filename).unwrap();
-// 
-//     let cons = parse_terms(input_stream.into_iter()).unwrap();
-// 
-//     let morph_schemes = morph_schemes_from_cons(&cons);
-// 
-//     (cons, morph_schemes)
-// }
+fn cons_from_file(filename: &str) -> Result<Vec<(String, Type)>, parse::ParseError> {
+
+    let input_stream = fs::read_to_string(filename)
+        .expect(&format!("Could not read file {}", filename));
+
+    let cons = parse::parse_constructors(
+        &mut parse::State::new(input_stream.chars()))?;
+
+    Ok(cons)
+}
 
 fn start_type() -> Type {
     t_fun(t_con("SCRIPT"), t_con("SCRIPT"))

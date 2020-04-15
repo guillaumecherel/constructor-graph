@@ -14,21 +14,44 @@ use crate::type_sy::{t_fun, t_con, t_var_0, t_param};
 #[derive(Debug)]
 #[derive(PartialEq)]
 #[derive(Eq)]
-pub struct ParseError(String, Option<Box<ParseError>>);
+pub enum ParseError{
+    ParseError{
+        msg: String,
+        source: Box<ParseError>
+    },
+    ParseErrorBottom{
+        msg: String,
+        line: usize,
+        following: String,
+    },
+}
 
-fn parse_error(msg: &str, source: Option<ParseError>) -> ParseError{
-    ParseError(String::from(msg), source.map(|x| Box::new(x)))
+fn parse_error(msg: &str, source: ParseError) -> ParseError{
+    ParseError::ParseError{
+        msg: String::from(msg),
+        source: Box::new(source),
+    }
+}
+
+fn parse_error_bottom<T>(msg: &str, stream: &mut State<T>) -> ParseError
+where T: Iterator<Item = char>
+{
+    ParseError::ParseErrorBottom{
+        msg: String::from(msg),
+        line: stream.current_line,
+        following: stream.take(20).collect(),
+    }
 }
 
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{}", self.0)?;
-                match &self.1 {
-                    Some(e) => write!(f, " Caused by: {}", e)?,
-                    None => (),
-                }
-                Ok(())
+        match &self {
+            ParseError::ParseError{msg, source} =>
+                write!(f, "{} Caused by: {}", msg, source),
+            ParseError::ParseErrorBottom{msg, line, following} =>
+                write!(f, "{} Line {} Following: {}", msg, line, following),
+        }
     }
 }
 
@@ -42,26 +65,31 @@ impl Error for ParseError {
 pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type)>, ParseError>
     where T: Iterator<Item = char>,
 {
-    parse_many(
+    let res = parse_many(
         |s| {
             let cons_list = parse_cons(s)
-                .map_err(|e| parse_error("parse_constructors: failed parsing cons.", Some(e)))?;
+                .map_err(|e| parse_error("parse_constructors: failed parsing cons.", e))?;
             parse_empty_lines(s)?;
             Ok(cons_list)
         },
-        stream)
+        stream)?;
+
+    parse_end_of_stream(stream)
+    .map_err(|e| parse_error("parse_constructors: expected end of stream", e))?;
+
+    Ok(res)
 }
 
 pub fn parse_cons<T>(stream: &mut State<T>) -> Result<(String, Type), ParseError>
     where T: Iterator<Item = char>
 {
     let name = parse_cons_name(stream)
-        .map_err(|e| parse_error("parse_cons: failed parsing name", Some(e)))?;
+        .map_err(|e| parse_error("parse_cons: failed parsing name", e))?;
     parse_char(':', stream)
-        .map_err(|e| parse_error("parse_cons: failed parsing colon delimiter", Some(e)))?;
+        .map_err(|e| parse_error("parse_cons: failed parsing colon delimiter", e))?;
     skip_whitespace(stream);
     let t = parse_type(stream)
-        .map_err(|e| parse_error("parse_cons: failed parsing type", Some(e)))?;
+        .map_err(|e| parse_error("parse_cons: failed parsing type", e))?;
     Ok((name, t))
 }
 
@@ -71,10 +99,10 @@ pub fn parse_cons_name<T>(stream: &mut State<T>) -> Result<String, ParseError>
     let name : String =
         parse_many(|s| parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
         .map(|chars| chars.into_iter().collect())
-        .map_err(|e| parse_error("parse_cons_name: failed parsing name", Some(e)))?;
+        .map_err(|e| parse_error("parse_cons_name: failed parsing name", e))?;
     
     if name.is_empty() {
-        Err(parse_error("Cons name is empty", None))
+        Err(parse_error_bottom("Cons name is empty", stream))
     } else {
         Ok(name)
     }
@@ -84,7 +112,7 @@ pub fn parse_empty_lines<T>(stream: &mut State<T>) -> Result<(), ParseError>
     where T: Iterator<Item = char>,
 {
     parse_many(parse_empty_line, stream)
-    .map_err(|e| parse_error("parse_empty_line: failed", Some(e)))?;
+    .map_err(|e| parse_error("parse_empty_line: failed", e))?;
 
     Ok(())
 }
@@ -94,7 +122,7 @@ pub fn parse_empty_line<T>(stream: &mut State<T>) -> Result<(), ParseError>
 {
     skip_whitespace(stream)?;
     parse_char('\n', stream)
-    .map_err(|e| parse_error("parse_empty_line: failed parsing newline character", Some(e)))
+    .map_err(|e| parse_error("parse_empty_line: failed parsing newline character", e))
 }
 
 pub fn parse_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
@@ -110,7 +138,7 @@ pub fn parse_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
                 s),
             s),
         stream)
-    .map_err(|e| parse_error("parse_type: failed", Some(e)))
+    .map_err(|e| parse_error("parse_type: failed", e))
 }
 
 pub fn parse_function_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
@@ -127,25 +155,25 @@ pub fn parse_function_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
                     s),
                 s),
             stream)
-        .map_err(|e| parse_error("parse_function_type: failed parsing left part", Some(e)))?;
+        .map_err(|e| parse_error("parse_function_type: failed parsing left part", e))?;
 
     // println!("LEFT {}", left);
 
     skip_whitespace(stream)
-    .map_err(|e| parse_error("parse_function_type: failed skipping whitespace before arrow", Some(e)))?;
+    .map_err(|e| parse_error("parse_function_type: failed skipping whitespace before arrow", e))?;
 
     parse_string("->", stream)
-    .map_err(|e| parse_error("parse_function_type: failed parsing \"->\"", Some(e)))?;
+    .map_err(|e| parse_error("parse_function_type: failed parsing \"->\"", e))?;
 
     skip_whitespace(stream)
-    .map_err(|e| parse_error("parse_function_type: failed skipping whitespace after arrow", Some(e)))?;
+    .map_err(|e| parse_error("parse_function_type: failed skipping whitespace after arrow", e))?;
 
     let right =
         parse_alt(
             |s| parse_parenthesized(parse_type, s),
             parse_type,
             stream)
-        .map_err(|e| parse_error("parse_function_type: failed parsing right part", Some(e)))?;
+        .map_err(|e| parse_error("parse_function_type: failed parsing right part", e))?;
 
     Ok(t_fun(left, right))
 }
@@ -157,10 +185,10 @@ pub fn parse_type_constant<T>(stream: &mut State<T>) -> Result<Type, ParseError>
     let mut name : String = String::new();
 
     name.push(parse_predicate(|c| c.is_uppercase(), stream)
-             .map_err(|e| parse_error("parse_type_constant: failed parsing first letter", Some(e)))?);
+             .map_err(|e| parse_error("parse_type_constant: failed parsing first letter", e))?);
     name.extend(parse_many(|s|
         parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
-        .map_err(|e| parse_error("parse_type_constant: failed parsing remaining letters", Some(e)))?);
+        .map_err(|e| parse_error("parse_type_constant: failed parsing remaining letters", e))?);
 
     skip_whitespace(stream)?;
 
@@ -173,10 +201,10 @@ pub fn parse_type_variable<T>(stream: &mut State<T>) -> Result<Type, ParseError>
     let mut name : String = String::new();
 
     name.push(parse_predicate(|c| c.is_lowercase(), stream)
-             .map_err(|e| parse_error("parse_type_variable: failed parsing first letter", Some(e)))?);
+             .map_err(|e| parse_error("parse_type_variable: failed parsing first letter", e))?);
     name.extend(parse_many(|s|
         parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
-             .map_err(|e| parse_error("parse_type_variable: failed parsing remaining letters", Some(e)))?);
+             .map_err(|e| parse_error("parse_type_variable: failed parsing remaining letters", e))?);
 
     skip_whitespace(stream)?;
 
@@ -189,10 +217,10 @@ pub fn parse_parametric_type<T>(stream: &mut State<T>) -> Result<Type, ParseErro
     let mut name : String = String::new();
 
     name.push(parse_predicate(|c| c.is_uppercase(), stream)
-             .map_err(|e| parse_error("parse_parametric_type: failed parsing name's first letter", Some(e)))?);
+             .map_err(|e| parse_error("parse_parametric_type: failed parsing name's first letter", e))?);
     name.extend(parse_many(|s|
         parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
-        .map_err(|e| parse_error("parse_type_constant: failed parsing name's remaining letters", Some(e)))?);
+        .map_err(|e| parse_error("parse_type_constant: failed parsing name's remaining letters", e))?);
 
     skip_whitespace(stream)?;
 
@@ -214,7 +242,7 @@ pub fn parse_parametric_type<T>(stream: &mut State<T>) -> Result<Type, ParseErro
     }
 
     let params: Vec<Type> = parse_many(parse_parameter, stream)
-        .map_err(|e| parse_error("parse_type_constant: failed parsing type parameters.", Some(e)))?;
+        .map_err(|e| parse_error("parse_type_constant: failed parsing type parameters.", e))?;
 
     Ok(t_param(&name, &params))
 }
@@ -223,18 +251,16 @@ pub fn parse_char<T>(c: char, stream: &mut State<T>) -> Result<(), ParseError>
     where T: Iterator<Item = char>
 {
     match stream.next() {
-        None => Err(parse_error(
-            &format!("Expected '{}' but reached end of stream ({}:{}).",
-                     c, stream.current_line, stream.current_col),
-            None )),
+        None => Err(parse_error_bottom(
+            &format!("Expected '{}' but reached end of stream.", c),
+            stream )),
         Some(d) =>
             if d == c {
                 Ok(())
             } else {
-                Err(parse_error(
-                    &format!("Expected '{}' but got '{}' ({}:{})",
-                              c, d, stream.current_line, stream.current_col),
-                    None))
+                Err(parse_error_bottom(
+                    &format!("Expected '{}' but got '{}'", c, d),
+                    stream))
             }
     }
 }
@@ -243,7 +269,7 @@ pub fn parse_whitespace<T>(stream: &mut State<T>) -> Result<(), ParseError>
     where T: Iterator<Item = char>
 {
     parse_predicate(|c| c.is_whitespace() && c != '\n', stream)
-    .map_err(|e| parse_error("parse_whitespace: failed", Some(e)))?;
+    .map_err(|e| parse_error("parse_whitespace: failed", e))?;
 
     Ok(())
 }
@@ -253,18 +279,18 @@ where P: Fn(char) -> bool,
       T: Iterator<Item = char>
 {
     match stream.next() {
-        None => Err(parse_error(
+        None => Err(parse_error_bottom(
             &format!("Expected character to be tested on a predicate but reached end of stream ({}:{}).",
                      stream.current_line, stream.current_col),
-            None)),
+            stream)),
         Some(d) =>
             if p(d)  {
                 Ok(d)
             } else {
-                Err(parse_error(
+                Err(parse_error_bottom(
                     &format!("Predicate unsatisfied for '{}' ({}:{})",
                                 d, stream.current_line, stream.current_col),
-                    None))
+                    stream))
             }
     }
 }
@@ -276,7 +302,7 @@ pub fn parse_string<T>(s: &str, stream: &mut State<T>) -> Result<(), ParseError>
         parse_char(c, stream)
         .map_err(|e| parse_error(
             &format!("parse_string: failed parsing string \"{}\".", s),
-            Some(e)))?;
+            e))?;
     }
 
     Ok(())
@@ -288,16 +314,16 @@ where T: Iterator<Item = char>,
       U: Debug
 {
     parse_char('(', stream)
-    .map_err(|e| parse_error("parse_parenthesized: failed parsing '('", Some(e)))?;
+    .map_err(|e| parse_error("parse_parenthesized: failed parsing '('", e))?;
     skip_whitespace(stream)?;
 
     let res = p(stream)
-        .map_err(|e| parse_error("parse_parenthesized: failed parsing inside parentheses", Some(e)))?;
+        .map_err(|e| parse_error("parse_parenthesized: failed parsing inside parentheses", e))?;
 
     skip_whitespace(stream)?;
 
     parse_char(')', stream)
-    .map_err(|e| parse_error("parse_parenthesized: failed parsing ')'", Some(e)))?;
+    .map_err(|e| parse_error("parse_parenthesized: failed parsing ')'", e))?;
 
     skip_whitespace(stream)?;
 
@@ -308,7 +334,7 @@ pub fn skip_whitespace<T>(stream: &mut State<T>) -> Result<(), ParseError>
 where T: Iterator<Item = char>,
 {
     parse_many(parse_whitespace, stream)
-    .map_err(|e| parse_error("skip_whitespace: failed", Some(e)))?;
+    .map_err(|e| parse_error("skip_whitespace: failed", e))?;
 
     Ok(())
 }
@@ -342,7 +368,7 @@ where T: Iterator<Item = char>,
 {
     match try_parse(p, stream) {
         Ok(u) => Ok(u),
-        Err(_) => q(stream).map_err(|e| parse_error("parse_alt: no parser succeeded", Some(e)))
+        Err(_) => q(stream).map_err(|e| parse_error("parse_alt: no parser succeeded", e))
     }
 }
 
@@ -354,7 +380,7 @@ pub fn try_parse<T, P, U>(p: P, stream: &mut State<T>) -> Result<U, ParseError>
 {
     stream.checkpoint();
 
-    let result = p(stream).map_err(|e| parse_error("try_parse: tried parser failed", Some(e)));
+    let result = p(stream).map_err(|e| parse_error("try_parse: tried parser failed", e));
 
     if result.is_ok() {
         stream.forget();
@@ -365,6 +391,17 @@ pub fn try_parse<T, P, U>(p: P, stream: &mut State<T>) -> Result<U, ParseError>
     result
 }
 
+pub fn parse_end_of_stream<T>(stream: &mut State<T>) -> Result<(), ParseError>
+    where T: Iterator<Item = char>,
+{
+    match stream.next() {
+        Some(x) => Err(
+            parse_error_bottom(
+                &format!("parse_end_of_stream: expected end of stream but got '{}'", x),
+            stream)),
+        None => Ok(()),
+    }
+}
 
 pub struct State<T>
 where T: Iterator<Item = char>
@@ -373,8 +410,8 @@ where T: Iterator<Item = char>
     buffer: Vec<char>,
     buf_pos: usize,
     checkpoints: Vec<usize>,
-    current_line: u32,
-    current_col: u32,
+    current_line: usize,
+    current_col: usize,
 }
 
 
@@ -410,8 +447,8 @@ where T: Iterator<Item = char>
             buffer: Vec::new(),
             buf_pos: 0,
             checkpoints: Vec::new(),
-            current_line : 0,
-            current_col : 0,
+            current_line : 1,
+            current_col : 1,
         }
     }
 
@@ -426,7 +463,14 @@ where T: Iterator<Item = char>
     pub fn restore(&mut self) {
         match self.checkpoints.pop() {
             None => panic!("No checkpoint to restore."),
-            Some(x) => self.buf_pos = x,
+            Some(x) => {
+                self.current_line -= {
+                    let sub = self.buffer[x..self.buf_pos].iter().filter(|c| **c == '\n').count();
+                    self.buf_pos = x;
+                    sub
+                };
+                //self.current_pos -=
+            }
         }
     }
 }

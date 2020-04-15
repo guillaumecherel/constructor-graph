@@ -11,12 +11,16 @@ pub fn y() -> Type {t_var_0("y")}
 
 pub fn cons() -> Vec<(String, Type)> {
     vec![
+        // calibrate: PosteriorDistribution x y -> SCRIPT
         (String::from("calibrate"),
             t_fun_seq(&[t_param("PosteriorDistribution", &[x(), y()]), t_con("SCRIPT")])),
+        // profile: Profile -> SCRIPT
         (String::from("profile"),
             t_fun_seq(&[t_con("Profile"), t_con("SCRIPT")])),
+        // diversity: Diversity Double -> SCRIPT
         (String::from("diversity"),
             t_fun_seq(&[t_param("Diversity", &[t_double()]), t_con("SCRIPT")])),
+        // sample_model_output: SimulationRuns x y -> SCRIPT
         (String::from("sample_model_output"),
             t_fun_seq(&[t_param("SimulationRuns", &[x(), y()]), t_con("SCRIPT")])),
 

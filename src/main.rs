@@ -1,4 +1,5 @@
 mod cat;
+mod parse;
 mod cons;
 mod openmole;
 mod util;
@@ -10,11 +11,13 @@ use std::iter::Iterator;
 use std::vec;
 use structopt::StructOpt;
 
+//use parse::*;
+
 use type_sy::{Type};
 use type_sy::{t_fun, t_con, t_var_0};
 
 use cat::{
-    morph_schemes_from_cons, MorphScheme, Morphism, morphisms_paths, morphisms_bf, morphisms_df, morphisms_from_source,
+    morph_schemes_from_cons, MorphScheme, Morphism, morphisms_bf, morphisms_from_source,
 };
 
 use cons::{Cons, Cons::Id, uncat_cons, pair, list_no_cons};
@@ -101,24 +104,27 @@ fn output_info(cons: &Vec<(String, Type)>, morph_schemes: &Vec<MorphScheme>) {
 fn output_gv(morph_schemes: &Vec<MorphScheme>) {
     let start = start_type();
 
-    let paths =
-        morphisms_paths(&vec![&start], &morph_schemes, t_con("SCRIPT"));
+    let edges =
+        morphisms_bf(&vec![&start], &morph_schemes);
 
     fn format_dot_edge(m: &Morphism) -> String {
         // "((-> Domain) Domain)" -> "Domain" [ label = "&unit_domain" ]
         format!("\"{src}\" -> \"{tgt}\" [ label=\"{name}\" ]",
-                src = m.source.fun_source().unwrap(),
-                tgt = m.target.fun_source().unwrap(),
+                src = m.source,
+                tgt = m.target,
                 name = m.name)
     }
+
+    let mut edges_set : HashSet<Morphism> = HashSet::new();
 
     println!("digraph {{");
     println!("    node [ shape=point ] ");
     println!("    \"(SCRIPT -> SCRIPT)\" [ shape=ellipse label=START]");
     println!("    \"SCRIPT\" [ shape=ellipse label=END]");
-    for p in paths {
-        for m in p {
-            println!("    {}", format_dot_edge(&m));
+    for p in edges {
+        let is_new = edges_set.insert(p.clone());
+        if is_new {
+            println!("    {}", format_dot_edge(&p));
         }
     }
     println!("}}");

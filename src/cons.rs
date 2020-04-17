@@ -2,10 +2,12 @@
 
 use std::fmt;
 use std::iter;
+use std::io;
+use std::io::Write;
 use std::collections::HashSet;
 
 use crate::type_sy::{VarNames, Type, var_names, arity, mgu, distinguish};
-use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con};
+use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con, t_int, t_double};
 
 #[derive(PartialEq)]
 #[derive(Eq)]
@@ -15,6 +17,8 @@ use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con};
 pub enum Cons {
     Id, // Identity constructor
     Data(usize), // User defined constructor
+    Special(SpecialCons), // Constructor triggering actions
+    Value(String), // Constructor for a simple value
     Ap, // Application constructor
     Comp, // Composition constructor
     Pair(Box<Cons>, Box<Cons>), //Application of a constructor to another
@@ -37,6 +41,24 @@ where F: FnOnce(&'a usize) -> T
 {
     match x {
         Data(i) => Some(f(i)),
+        _ => None,
+    }
+}
+
+fn run_special<'a, F, T>(x: &'a Cons, f: F) -> Option<T>
+where F: FnOnce(&'a SpecialCons) -> T
+{
+    match x {
+        Special(i) => Some(f(i)),
+        _ => None,
+    }
+}
+
+fn run_value<'a, F, T>(x: &'a Cons, f: F) -> Option<T>
+where F: FnOnce(&'a String) -> T
+{
+    match x {
+        Value(i) => Some(f(i)),
         _ => None,
     }
 }
@@ -82,11 +104,124 @@ impl fmt::Display for Cons {
     match self {
         Data(a) => write!(f, "{:?}", a),
         Id => write!(f, "Id"),
+        Special(c) => write!(f, "Special {:?}", c),
+        Value(s) => write!(f, "Value {}", s),
         Ap => write!(f, "&"),
         Comp => write!(f, "<"),
         Pair(a, b) => write!(f, "({}, {})", a, b),
     }
   }
+}
+
+#[derive(PartialEq)]
+#[derive(Eq)]
+#[derive(Debug)]
+#[derive(Clone)]
+#[derive(Hash)]
+pub enum SpecialCons {
+    ReadText,
+    ReadInt,
+    ReadDouble,
+    ReadFilePath,
+}
+
+impl SpecialCons {
+    pub fn run(&self) -> Cons {
+        match self {
+            SpecialCons::ReadText => {
+                loop {
+                    print!("Reading Text> ");
+                    io::stdout().flush();
+                    let mut input = String::new();
+                    match io::stdin().read_line(&mut input) {
+                        Err(_) => {
+                            println!("Failed to read line.");
+                            continue
+                        }
+                        Ok(_) => {
+                            input.trim();
+                            break Value(input)
+                        }
+                    };
+                }
+            }
+            SpecialCons::ReadInt => {
+                loop {
+                    print!("Reading Int> ");
+                    io::stdout().flush();
+                    let mut input = String::new();
+                    match io::stdin().read_line(&mut input) {
+                        Err(_) => {
+                            println!("Failed to read line.");
+                            continue
+                        }
+                        Ok(_) =>
+                            match input.trim().parse::<usize>() {
+                                Err(_) => {
+                                    println!("Expecting an integer.");
+                                    continue
+                                },
+                                Ok(_) => {
+                                    input.trim();
+                                    println!("TRIMMED {}END", &input);
+                                    break Value(input)
+                                }
+                            }
+                    };
+                }
+            }
+            SpecialCons::ReadDouble => {
+                loop {
+                    print!("Reading Double> ");
+                    io::stdout().flush();
+                    let mut input = String::new();
+                    match io::stdin().read_line(&mut input) {
+                        Err(_) => {
+                            println!("Failed to read line.");
+                            continue
+                        }
+                        Ok(_) =>
+                            match input.trim().parse::<f64>() {
+                                Err(_) => {
+                                    println!("Expecting an double.");
+                                    continue
+                                }
+                                Ok(_) => {
+                                    input.trim();
+                                    break Value(input)
+                                }
+                            }
+                    };
+                }
+            }
+            SpecialCons::ReadFilePath => {
+                loop {
+                    print!("Reading Path> ");
+                    io::stdout().flush();
+                    let mut input = String::new();
+                    match io::stdin().read_line(&mut input) {
+                        Err(_) => {
+                            println!("Failed to read line.");
+                            continue
+                        }
+                        Ok(_) => {
+                            input.trim();
+                            break Value(input)
+                        }
+                    };
+                }
+            }
+        }
+    }
+}
+
+pub fn predef_cons() -> Vec<(String, Cons, Type, Vec<String>)> {
+    vec![
+        (String::from("read_int"), Special(SpecialCons::ReadInt), t_int(), vec![]),
+        (String::from("read_double"), Special(SpecialCons::ReadDouble), t_double(), vec![]),
+        (String::from("read_text"), Special(SpecialCons::ReadText), t_con("Text"), vec![]),
+        (String::from("read_file_path"), Special(SpecialCons::ReadFilePath), t_con("FilePath"), vec![]),
+    ]
 }
 
 // Returns a constructors of type (a -> b) -> (a1 -> a2 -> ... -> an -> b)
@@ -115,10 +250,23 @@ fn using(x: Cons, t: &Type) -> (Cons, Type) {
     (c, res_type)
 }
 
-pub fn cat_cons(xs: Vec<(String, Type)>) -> Vec<(String, Cons, Type)> {
-    (0..).zip(xs.iter()).map(
-        |(i ,(n, t))| match using(Data(i), t) { (c_, t_) => (String::from(n), c_, t_)})
+pub fn cat_cons(xs: Vec<(String, Cons, Type)>) -> Vec<(String, Cons, Type)> {
+    xs.iter().map(
+        |(n, c, t)| match using(c.clone(), t) { (c_, t_) => (String::from(n), c_, t_)})
     .collect()
+}
+
+// Performs the actions triggered by special constructors
+pub fn run_special_cons(cons: &Cons) -> Cons {
+    run_special(cons, |sp| sp.run())
+    .or_else(||
+        run_pair(cons,
+            |l| Some(run_special_cons(l)),
+            |r| Some(run_special_cons(r)),
+            |d, e| pair(d, e))
+    )
+    .or_else(|| Some(cons.clone()))
+    .unwrap()
 }
 
 // Interpret constructors Comp, Ap and Pair to leave only user defined constructors:
@@ -215,8 +363,8 @@ pub fn uncat_cons(cons: &Cons) -> Cons {
     .unwrap()
 }
 
-pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Type)>) -> String {
-    //println!("SCRIPT_CONS {}", c);
+pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Cons, Type)>) -> String {
+    println!("SCRIPT_CONS {}", c);
     // match Pair(f, x)
     run_pair(c, run_any, run_any,
         |f, g| format!("{}\n{}",
@@ -224,7 +372,41 @@ pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Type)>) -> String {
             indent(2, &script_cons(g, cons_def))))
     // match Data(i)
     .or_else( || run_data(c, |&i| format!("{}", cons_def[i].0)) )
+    // match Value(s)
+    .or_else( || run_value(c, |s| s.clone()) )
     .expect(&format!("I don't know how to write script for {}", &c))
+}
+
+pub fn script_template(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, String)>) -> String {
+
+    pub fn go(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, String)>) -> (Vec<String>, String) {
+        // match Pair(f, x)
+        run_pair(c, run_any, run_any,
+            |f, g| {
+                let (args, body) = go(f, cons_def);
+                let (args_g, body_g) = go(g, cons_def);
+
+                if !args_g.is_empty() {
+                    panic!("Free arguments remain in {}", g);
+                }
+
+                // replace any occurence of args[0] in body by body_g
+                match args.split_first() {
+                    Some((arg0, args_left)) => 
+                        (args_left.to_owned(), body.replace(&format!("{{{}}}", arg0), &body_g)),
+                    None => panic!("No more free argument in {}", f),
+                }
+        })
+        // match Data(i)
+        .or_else( || run_data(c, |&i| (cons_def[i].3.clone(), cons_def[i].4.clone())) )
+        // match Value(s)
+        .or_else( || run_value(c, |s| (Vec::new(), s.clone())) )
+        .expect(&format!("I don't know how to write script for {}", &c))
+    }
+
+    let (_, script) = go(c, cons_def);
+
+    script
 }
 
 fn indent(width: usize, txt: &str) -> String {
@@ -242,11 +424,11 @@ fn indent(width: usize, txt: &str) -> String {
 }
 
 //Returns a list of types for which no constructor was found
-pub fn list_no_cons<'a>(cons: &'a[(String, Type)]) -> Vec<(&'a String, &'a Type)> {
+pub fn list_no_cons<'a>(cons: &'a[(String, Cons, Type)]) -> Vec<(&'a String, &'a Type)> {
     let mut input_types = HashSet::new();
     let mut output_types = HashSet::new();
 
-    for (n, t) in cons {
+    for (n, _, t) in cons {
         let (args, out) = t.split();
         output_types.insert(out);
         for a in args.into_iter() {
@@ -273,7 +455,6 @@ pub fn cons_test() -> Vec<(String, Type)> {
         (String::from("go"), t_fun(t_con("B"), t_con("SCRIPT"))),
     ]
 }
-
 
 #[cfg(test)]
 mod tests {

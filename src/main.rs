@@ -21,7 +21,7 @@ use cat::{
     morph_schemes_from_cons, MorphScheme, Morphism, morphisms_bf, morphisms_from_source,
 };
 
-use cons::{Cons, Cons::Id, uncat_cons, pair, list_no_cons};
+use cons::{Cons, Cons::Id, uncat_cons, pair, list_no_cons, run_special_cons};
 
 #[derive(StructOpt)]
 #[derive(Debug)]
@@ -46,18 +46,29 @@ fn main() {
     let args = Cli::from_args();
     //let input_cons = cons::cons_test();
     //let input_cons = openmole::cons();
+    let predef_cons = cons::predef_cons();
     let input_cons = cons_from_file("openmole.cons").expect("Could not read cons input file.");
-    let script = |c: &Cons| -> String { cons::script_cons(c, &input_cons) };
+    let all_cons_sig: Vec<(String, Cons, Type)> =
+        input_cons.iter().map(|(nam,cons,typ,_,_)| (nam.clone(), cons.clone(), typ.clone()))
+        .chain(predef_cons.iter().map(|(nam,cons,typ,_)| (nam.clone(), cons.clone(), typ.clone())))
+        .collect();
+    // let script = |c: &Cons| -> String {
+    //     cons::script_cons(
+    //         c,
+    //         &input_cons.iter().map(|(nam,cons,typ,_,_)| (nam.clone(), cons.clone(), typ.clone())).collect()
+    //     )
+    // };
+    let script = |c: &Cons| -> String { cons::script_template( c, &input_cons ) };
 
     // Types that have no constructors:
-    let no_cons = list_no_cons(&input_cons);
+    let no_cons = list_no_cons(&all_cons_sig);
     if !no_cons.is_empty() {
         eprintln!("The following types have no constructors:");
         for (n, t) in no_cons {
             eprintln!("    {} from constructor {}", t, n);
         }
     } else {
-        let cons = cons::cat_cons(input_cons.clone());
+        let cons = cons::cat_cons(all_cons_sig.clone());
         let morph_schemes = morph_schemes_from_cons(&cons);
         match args.output_type {
            None => output_info(&input_cons, &morph_schemes),
@@ -69,7 +80,7 @@ fn main() {
 }
 
 
-fn cons_from_file(filename: &str) -> Result<Vec<(String, Type)>, parse::ParseError> {
+fn cons_from_file(filename: &str) -> Result<Vec<(String, Cons, Type, Vec<String>, String)>, parse::ParseError> {
 
     let input_stream = fs::read_to_string(filename)
         .expect(&format!("Could not read file {}", filename));
@@ -77,17 +88,21 @@ fn cons_from_file(filename: &str) -> Result<Vec<(String, Type)>, parse::ParseErr
     let cons = parse::parse_constructors(
         &mut parse::State::new(input_stream.chars()))?;
 
-    Ok(cons)
+    let res = (0..).zip(cons.into_iter())
+        .map(|(i, (name, typ, args, body))| (name, Cons::Data(i), typ, args, body))
+        .collect();
+
+    Ok(res)
 }
 
 fn start_type() -> Type {
     t_fun(t_con("SCRIPT"), t_con("SCRIPT"))
 }
 
-fn output_info(cons: &Vec<(String, Type)>, morph_schemes: &Vec<MorphScheme>) {
+fn output_info(cons: &Vec<(String, Cons, Type, Vec<String>, String)>, morph_schemes: &Vec<MorphScheme>) {
     println!("User defined Constructors");
-    for (i, (name, t)) in (0..).zip(cons.iter()) {
-      println!("    {}. {} : {}", i, name, t);
+    for (name, c, t, _, _) in cons.iter() {
+      println!("    {}. {} : {}", c, name, t);
     }
     println!("");
 
@@ -143,21 +158,54 @@ where F: Fn(&Cons) -> String,
 
     while cur_type != stop_type {
         println!("");
-        println!("Current morphism: {}", cur_morphism);
+        println!("Current morphism: {}", cur_morphism.name);
         println!("Chain with:");
 
         let candidates = morphisms_from_source(&cur_type, morph_schemes);
 
-        for (i, m) in (0..).zip(candidates.iter()) {
-           println!("{}: {}", i, m);
-        }
+        selection =
+            if candidates.len() < 1 {
+                panic!("No candidate morphism.");
+            } else if candidates.len() == 1 {
+                0
+            } else {
 
-        input.clear();
-        io::stdin().read_line(&mut input).expect("Failed to read line");
-        println!("input {}", input);
-        selection = input.trim().parse::<usize>().expect("Failed to parse input");
+                for (i, m) in (0..).zip(candidates.iter()) {
+                   println!("{}: {}", i, m.name);
+                }
 
-        cur_morphism = cur_morphism.and_then(&candidates[selection])
+                loop {
+                    print!("Select [0]> ");
+                    input.clear();
+                    match io::stdin().read_line(&mut input) {
+                        Err(e) => {
+                            println!("Failed to read input: {}", e);
+                            continue
+                        }
+                        Ok(_) => (),
+                    }
+
+                    let trimmed = input.trim();
+
+                    if trimmed.is_empty() {
+                        break 0
+                    } else {
+                        match input.trim().parse::<usize>() {
+                            Err(e) => {
+                                println!("Failed to parse input: {}", e);
+                                continue
+                            }
+                            Ok(s) => break s,
+                        }
+                    }
+                }
+            };
+
+        let mut selected_morphism = candidates[selection].clone();
+
+        selected_morphism.cons = run_special_cons(&selected_morphism.cons);
+
+        cur_morphism = cur_morphism.and_then(&selected_morphism)
             .expect("Failed to chain new morphism.");
         cur_type = cur_morphism.target.clone();
     }

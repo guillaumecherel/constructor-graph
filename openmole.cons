@@ -1,98 +1,244 @@
+test: Int -> SCRIPT
+test i
+> pre{i}post
+
 calibrate: PosteriorDistribution x y -> SCRIPT
+calibrate x
+> {x}
+
 profile: Profile -> SCRIPT
+profile x
+> {x}
+
 diversity: Diversity Double -> SCRIPT
-sample_model_output: SimulationRuns x y -> SCRIPT
+diversity x
+> {x}
 
-manual_input: ManualInput
+seed: Text -> Seed
+seed name
+> {name}
 
-manual_var_name: ManualInput -> VarName
-manual_int: ManualInput -> Int
-manual_double: ManualInput -> Double
-manual_file_path: ManualInput -> FilePath
-manual_address: ManualInput -> Address
-manual_login: ManualInput -> Login
-manual_csv_separator: ManualInput -> CsvSeparator
-manual_vo: ManualInput -> VO
-manual_cpu_time: ManualInput -> CpuTime
-manual_openmole_memory: ManualInput -> OpenMoleMemory
+var_int: Text -> Var Int
+var_int name
+> {name}
 
-data_point: y -> DataPoint y
-population_size: Int -> PopulationSize
-bounds: List (Pair x x) -> Bounds x
+var_double: Text -> Var Double
+var_double name
+> {name}
 
-var_int: VarName -> Var Int
-var_double: VarName -> Var Double
+inputs: InputList a -> Input b
+inputs list
+> Seq(
+>    {list})
 
-pair: a -> b -> Pair a b
+add_input: Var a -> InputList b -> InputList (Pair a b)
+add_input var list
+> {var},
+> {list}
 
-add_element: a -> List a -> List a
-no_more_elements: List a
+single_input: Var a -> InputList a
+single_input var 
+> {var} 
 
-add_input: Var a -> Input b -> Input (Pair a b)
-no_more_inputs: Input b
-list_inputs: List (Var a) -> Input (List a)
+mapped_inputs: MappedInputList a -> MappedInput b
+mapped_inputs list
+> Seq(
+>    {list})
 
-mapped_input: Var x -> VarName -> MappedInput x
-add_mapped_input: Var a -> VarName -> MappedInput b -> MappedInput (Pair a b)
-no_more_mapped_input: MappedInput a
+add_mapped_input: Var a -> MappedInputList b -> MappedInputList (Pair a b)
+add_mapped_input var list
+> {var} mapped "{mapped_name}",
+> {list}
 
-add_output: Var a -> Output b -> Output (Pair a b)
-no_more_outputs: Output b
-list_outputs: List (Var a) -> Output (List a)
+single_mapped_input: Var a -> Text -> MappedInputList a
+single_mapped_input var mapped_name
+> {var} mapped "{mapped_name}" 
 
-scala_model: ScalaCode -> Input x -> Output y -> Model x y
-netlogo_6_model: NetLogoCode -> NetLogoSetup -> Input x -> Output y -> Model x y
-r_model: RCode -> Input x -> Output y -> Model x y
-replicate: Int -> Model x y -> Model x (List y)
-direct_sampling: Sample x -> Model x y -> Model x (List y)
+mapped_outputs: MappedOutputList a -> MappedOutput b
+mapped_outputs list
+> Seq(
+>    {list})
 
-scala_code_from_file: FilePath -> ScalaCode
-manual_scala_code: ManualInput -> ScalaCode
+add_mapped_output: Var a -> MappedOutputList b -> MappedOutputList (Pair a b)
+add_mapped_output var list
+> {var} mapped "{mapped_name}",
+> {list}
 
-netlogo_code_from_file: FilePath -> NetLogoCode
+single_mapped_output: Var a -> Text -> MappedOutputList a
+single_mapped_output var mapped_name
+> {var} mapped "{mapped_name}" 
 
-netlogo_setup_from_file: FilePath -> NetLogoSetup
-manual_netlogo_setup: ManualInput -> ManualInput -> ManualInput -> NetLogoSetup
+outputs: OutputList a -> Output b
+outputs list
+> Seq(
+>    {list})
 
-r_code_from_file: FilePath -> RCode
-manual_input_r_code: ManualInput -> RCode
+add_output: Var a -> OutputList b -> OutputList (Pair a b)
+add_output var list
+> {var},
+> {list}
 
-lhs: SampleSize -> Bounds x -> Sample x
-sobol: SampleSize -> Bounds x -> Sample x
-uniform: SampleSize -> Double -> Sample Double
-csv_sampling: MappedInput x -> CsvSeparator -> Sample x
-full_factorial: Sample a -> Sample b -> Sample (Pair a b)
-concat_sampling: Sample a -> Sample a -> Sample a
-zip_sampling: Sample a -> Sample b -> Sample (Pair a b)
-resample: Int -> Sample a -> Sample (List a)
+single_output: Var a -> OutputList a
+single_output var 
+> {var} 
 
-run_simulations: Sample x -> Model x y -> SimulationRuns x y
+scala_model: Text -> Input x -> Output y -> Model x y
+scala_model source inputs outputs
+>   ScalaTask("{source}") set (
+>     inputs += {inputs},
+>     outputs += {outputs}
+>   )
 
-calibrate: Termination -> PopulationSize -> Bounds x -> DataPoint y -> Model x y -> Pareto x
+netlogo_6_model: FilePath -> Text -> Text -> Text -> MappedInput x -> MappedOutput y -> Seed -> Model x y
+netlogo_6_model source netlogo_cmd_setup netlogo_cmd_go mapped_inputs mapped_outputs seed
+> val fireTask =
+>   NetLogo6Task(
+>     workDirectory / "Fire.nlogo", 
+>     List(
+>       "random-seed ${{seed}}",
+>       "{netlogo_cmd_setup}",
+>       "{netlogo_cmd_go}")
+>     ) set (
+>     inputs += {seed},
+>     inputs += {mapped_inputs},
+>     outputs += seed,
+>     outputs += {mapped_outputs}
+>   )
 
-morris: Input x -> Output x -> Bounds x -> MorrisRepetitions -> MorrisLevels -> Model x y -> MorrisSensitivityIndex x y
-morris_repetitions: Int -> MorrisRepetitions
-morris_levels: Int -> MorrisLevels
+calibrate: Model x y -> Bounds x -> Int -> Output y -> Int -> Pareto x
+calibrate model bounds population_size 
+> NSGA2Evolution(
+>   evaluation = modelTask,
+>   objectives = {objective},
+>   mu = 200,
+>   genome = Seq(
+>     param1 in (0.0, 99.0),
+>     param2 in (0.0, 99.0),
+>     param3 in (0, 5),
+>     param4 in List("apple", "banana", "strawberry")),
+>   termination = 100,
+>   parallelism = 10
+> ) hook (workDirectory / "path/to/a/directory")
 
-saltelli: Input x -> Output x -> Bounds x -> SampleSize  -> Model x y -> GlobalSensitivityIndex x y
+morris: Model x y -> Bounds x -> Output x -> Int -> Int -> MorrisSensitivityIndex x y
+morris model outputs repetitions levels
+> SensitivityMorris(
+>   evaluation = {model},
+>   inputs = {bounds},
+>   outputs = {outputs},
+>   repetitions = {repetitions},
+>   levels = {levels}
+> ) hook display
 
-profile: Termination -> SubIntervalSize -> Input Double -> Bounds (List Double) -> DataPoint (List Double) -> Model (List Double) (List Double) -> Profile
-sub_interval_size: Int -> SubIntervalSize
+saltelli: Model x y -> Bounds x -> Output y -> Int -> GlobalSensitivityIndex x y
+saltelli model bounds outputs samples
+> SensitivitySaltelli(
+>   evaluation = {model},
+>   inputs = {bounds},
+>   outputs = {outputs},
+>   samples = {samples}
+> ) hook display
 
-pse: Termination -> Bounds x -> Grid y -> Model x y -> Diversity y
-grid: List Double -> Grid Double
 
-max_simu_termination: Int -> Termination
-max_seconds_termination: Int -> Termination
-max_hours_termination: Int -> Termination
+profile: Model x y -> Int -> Output y -> Var a -> Int -> Bounds x -> Int -> Int -> Int -> Seed -> Profile
+profile model replications objective profiled_var number_of_bins genome_bounds parallelism job_duration_minutes termination seed 
+> ProfileEvolution(
+>   evaluation = {model},
+>   objective = {objective},
+>   x = {profiled_var},
+>   nX = {number_of_bins},
+>   genome = {genome_bounds},
+>   termination = {termination},
+>   parallelism = {parallelism},
+>   stochastic = Stochastic(seed = {seed}, replications = {replications}),
+>   distribution = Island({job_duration_minutes} minutes)
+> ) hook(workDirectory / "path/to/a/directory")
 
-abc: Termination -> SampleSize -> Distribution x -> DataPoint y -> Model x y -> PosteriorDistribution x y
-sample_size: Int -> SampleSize
+pse: Model x y -> Bounds x -> Grid y -> Int -> Int -> Seed -> Int -> Diversity y
+pse model genome_bounds grid parallelism termination seed output_frequency
+> PSEEvolution(
+>   evaluation = {model},
+>   parallelism = {parallelism},
+>   termination = {termination},
+>   genome = {bounds},
+>   objectives = {grid},
+>   stochastic = Stochastic(seed = myseed)
+> ) hook (workDirectory / "results", frequency = {output_frequency})
 
-uniform_distribution: List (Pair Double Double) -> Distribution (List Double)
-beta_distribution: List (Pair Double Double) -> Distribution (List Double)
+grid: GridList x -> Grid x
+grid list
+> Seq(
+>   {list})
 
-local: Int -> Environment
-ssh: Address -> Login -> Int -> Environment
-pbs: Address -> Login -> Environment
-egi: VO -> CpuTime -> OpenMoleMemory -> Environment
+add_grid: Var a -> a -> a -> a -> GridList b -> GridList (Pair a b)
+add_grid var min max by list
+> {var} in ({min} to {max} by {by}),
+> {list}
+
+single_grid: Var a -> a -> a -> GridList a
+single_grid var min max by
+> {var} in ({min} to {max} by {by})
+
+bounds: BoundsList x -> Bounds x
+bounds list
+> Seq(
+>   {list})
+
+add_bound: Var a -> a -> a -> BoundsList b -> BoundsList (Pair a b)
+add_bound var min max list
+> {var} in ({min}, {max}),
+> {list}
+
+single_bound: Var a -> a -> a -> BoundsList a
+single_bound var min max
+> {var} in ({min}, {max})
+
+abc: Model x y -> Prior x -> Observed y -> Int -> Int -> Double -> Int -> Int -> PosteriorDistribution x y
+abc model prior data sample_size generated p_acc_min stop_sam_size par
+> IslandABC(
+>   evaluation = {model},
+>   prior = {prior},
+>   observed = {data},
+>   sample = {sam_size},
+>   generated = {gen},
+>   minAcceptedRatio = {p_acc_min},
+>   stopSampleSize = {stop_sam_size},
+>   parallelism={par}
+> ) hook(workDirectory / "posterior_sample")
+
+observed: ObservedList a -> Observed a
+observed list
+> Seq(
+>   {list})
+
+add_observed: Var a -> a -> ObservedList b -> ObservedList (Pair a b)
+add_observed var value obs_b
+> {var} -> {value},
+> obs_b
+
+single_observed: Var a -> a -> ObservedList a
+single_observed var value
+> {var} -> {value}
+
+independant_priors: IndependentPriorsList a -> Prior a
+independant_priors x
+> IndependentPriors(
+>   {x})
+
+add_independant_prior: UnivariatePrior a -> IndependentPriorsList b -> IndependentPriorsList (Pair a b)
+add_independant_prior new_dist list
+> {new_dist},
+> {list}
+
+single_independant_prior: UnivariatePrior a -> IndependentPriorsList a 
+single_independant_prior dist
+> {dist}
+
+uniform_prior: Var a -> a -> a -> UnivariatePrior a
+uniform_prior var low_bound up_bound
+> UniformPrior({var}, {low_bound}, {up_bound}) 
+
+beta_prior: Var a -> a -> a -> UnivariatePrior a
+beta_prior var alpha beta
+> UniformPrior({var}, {low_bound}, {up_bound}) 
+

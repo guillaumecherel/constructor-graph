@@ -62,14 +62,13 @@ impl Error for ParseError {
     }
 }
 
-pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type)>, ParseError>
+pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type, Vec<String>, String)>, ParseError>
     where T: Iterator<Item = char>,
 {
     let res = parse_many(
         |s| {
             let cons_list = parse_cons(s)
                 .map_err(|e| parse_error("parse_constructors: failed parsing cons.", e))?;
-            parse_empty_lines(s)?;
             Ok(cons_list)
         },
         stream)?;
@@ -80,49 +79,106 @@ pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type)
     Ok(res)
 }
 
-pub fn parse_cons<T>(stream: &mut State<T>) -> Result<(String, Type), ParseError>
+pub fn parse_cons<T>(stream: &mut State<T>) -> Result<(String, Type, Vec<String>, String), ParseError>
     where T: Iterator<Item = char>
 {
-    let name = parse_cons_name(stream)
-        .map_err(|e| parse_error("parse_cons: failed parsing name", e))?;
-    parse_char(':', stream)
-        .map_err(|e| parse_error("parse_cons: failed parsing colon delimiter", e))?;
-    skip_whitespace(stream);
-    let t = parse_type(stream)
-        .map_err(|e| parse_error("parse_cons: failed parsing type", e))?;
-    Ok((name, t))
-}
+    let (name1, typ) = parse_cons_declaration(stream)
+    .map_err(|e| parse_error("parse_cons: failed parsing declaration.", e))?;
 
-pub fn parse_cons_name<T>(stream: &mut State<T>) -> Result<String, ParseError>
-    where T: Iterator<Item = char>
-{
-    let name : String =
-        parse_many(|s| parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
-        .map(|chars| chars.into_iter().collect())
-        .map_err(|e| parse_error("parse_cons_name: failed parsing name", e))?;
+    parse_char('\n',stream)
+    .map_err(|e| parse_error("parse_cons_definition: expecting newline", e))?;
     
-    if name.is_empty() {
-        Err(parse_error_bottom("Cons name is empty", stream))
+    let (name2, args, body) = parse_cons_definition(stream)
+    .map_err(|e| parse_error("parse_cons: failed parsing definition.", e))?;
+
+    if name1 != name2 {
+        Err(parse_error_bottom("parse_cons: function name in declaration does not match function name in definition", stream))
     } else {
-        Ok(name)
+        Ok((name1, typ, args, body))
     }
 }
 
-pub fn parse_empty_lines<T>(stream: &mut State<T>) -> Result<(), ParseError>
-    where T: Iterator<Item = char>,
-{
-    parse_many(parse_empty_line, stream)
-    .map_err(|e| parse_error("parse_empty_line: failed", e))?;
-
-    Ok(())
-}
-
-pub fn parse_empty_line<T>(stream: &mut State<T>) -> Result<(), ParseError>
+pub fn parse_cons_declaration<T>(stream: &mut State<T>) -> Result<(String, Type), ParseError>
     where T: Iterator<Item = char>
 {
+    let name = parse_cons_name(stream)
+        .map_err(|e| parse_error("parse_cons_declaration: failed parsing name", e))?;
+    parse_char(':', stream)
+        .map_err(|e| parse_error("parse_cons_declaration: failed parsing colon delimiter", e))?;
     skip_whitespace(stream)?;
-    parse_char('\n', stream)
-    .map_err(|e| parse_error("parse_empty_line: failed parsing newline character", e))
+    let t = parse_type(stream)
+        .map_err(|e| parse_error("parse_cons_declaration: failed parsing type", e))?;
+    Ok((name, t))
+}
+
+pub fn parse_cons_definition<T>(stream: &mut State<T>) -> Result<(String, Vec<String>, String), ParseError>
+where T: Iterator<Item = char>
+{
+    let (name, args) = parse_cons_args(stream)
+    .map_err(|e| parse_error("parse_cons_definition: failed parsing cons args", e))?;
+
+    parse_char('\n',stream)
+    .map_err(|e| parse_error("parse_cons_definition: expecting newline", e))?;
+
+    let body = parse_cons_body(stream)
+    .map_err(|e| parse_error("parse_cons_definition: failed parsing cons body", e))?;
+
+    Ok((name, args, body))
+}
+
+pub fn parse_cons_args<T>(stream: &mut State<T>) -> Result<(String, Vec<String>), ParseError>
+where T: Iterator<Item = char>
+{
+    let name = parse_cons_name(stream)
+        .map_err(|e| parse_error("parse_cons_args: failed parsing cons name", e))?;
+    let args = parse_many(parse_cons_arg_name, stream)
+        .map_err(|e| parse_error("parse_cons_args: failed parsing args names", e))?;
+
+    Ok((name, args))
+}
+
+pub fn parse_cons_arg_name<T>(stream: &mut State<T>) -> Result<String, ParseError>
+where T: Iterator<Item = char>
+{
+    parse_uncapitalized_identifier(stream)
+    .map_err(|e| parse_error("parse_cons_arg_name: failed.", e))
+}
+
+pub fn parse_cons_body<T>(stream: &mut State<T>) -> Result<String, ParseError>
+where T: Iterator<Item = char>
+{
+    pub fn parse_body_line<T>(stream: &mut State<T>) -> Result<String, ParseError>
+    where T: Iterator<Item = char>
+    {
+        parse_string("> ", stream)
+        .map_err(|e| parse_error("parse_body_line: failed parsing line prefix", e))?;
+
+        parse_line(stream)
+        .map_err(|e| parse_error("parse_body_line: failed parsing line", e))
+    }
+
+    let mut lines = parse_many(parse_body_line, stream)
+    .map_err(|e| parse_error("parse_cons_body: failed parsing a line of body", e))?;
+
+    skip_empty_lines(stream)?;
+
+    match lines.split_first_mut() {
+        Some((first, tail)) => {
+            for l in tail {
+                first.push('\n');
+                first.push_str(l);
+            }
+            Ok(first.to_string())
+        }
+        None => Ok(String::new()),
+    }
+}
+
+pub fn parse_cons_name<T>(stream: &mut State<T>) -> Result<String, ParseError>
+where T: Iterator<Item = char>
+{
+    parse_uncapitalized_identifier(stream)
+    .map_err(|e| parse_error("parse_cons_name: failed.", e))
 }
 
 pub fn parse_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
@@ -178,51 +234,29 @@ pub fn parse_function_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
     Ok(t_fun(left, right))
 }
 
-
 pub fn parse_type_constant<T>(stream: &mut State<T>) -> Result<Type, ParseError>
-    where T: Iterator<Item = char>
+where T: Iterator<Item = char>
 {
-    let mut name : String = String::new();
-
-    name.push(parse_predicate(|c| c.is_uppercase(), stream)
-             .map_err(|e| parse_error("parse_type_constant: failed parsing first letter", e))?);
-    name.extend(parse_many(|s|
-        parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
-        .map_err(|e| parse_error("parse_type_constant: failed parsing remaining letters", e))?);
-
-    skip_whitespace(stream)?;
+    let name = parse_capitalized_identifier(stream)
+        .map_err(|e| parse_error("parse_type_constant: failed", e))?;
 
     Ok(t_con(&name))
 }
 
 pub fn parse_type_variable<T>(stream: &mut State<T>) -> Result<Type, ParseError>
-    where T: Iterator<Item = char>
+where T: Iterator<Item = char>
 {
-    let mut name : String = String::new();
-
-    name.push(parse_predicate(|c| c.is_lowercase(), stream)
-             .map_err(|e| parse_error("parse_type_variable: failed parsing first letter", e))?);
-    name.extend(parse_many(|s|
-        parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
-             .map_err(|e| parse_error("parse_type_variable: failed parsing remaining letters", e))?);
-
-    skip_whitespace(stream)?;
+    let name = parse_uncapitalized_identifier(stream)
+    .map_err(|e| parse_error("parse_type_variable: failed.", e))?;
 
     Ok(t_var_0(&name))
 }
 
 pub fn parse_parametric_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
-    where T: Iterator<Item = char>
+where T: Iterator<Item = char>
 {
-    let mut name : String = String::new();
-
-    name.push(parse_predicate(|c| c.is_uppercase(), stream)
-             .map_err(|e| parse_error("parse_parametric_type: failed parsing name's first letter", e))?);
-    name.extend(parse_many(|s|
-        parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
-        .map_err(|e| parse_error("parse_type_constant: failed parsing name's remaining letters", e))?);
-
-    skip_whitespace(stream)?;
+    let name = parse_capitalized_identifier(stream)
+        .map_err(|e| parse_error("parse_parametric_type: failed parsing type name.", e))?;
 
     fn parse_parameter<T>(stream: &mut State<T>) -> Result<Type, ParseError>
         where T: Iterator<Item = char>
@@ -245,6 +279,72 @@ pub fn parse_parametric_type<T>(stream: &mut State<T>) -> Result<Type, ParseErro
         .map_err(|e| parse_error("parse_type_constant: failed parsing type parameters.", e))?;
 
     Ok(t_param(&name, &params))
+}
+
+pub fn parse_uncapitalized_identifier<T>(stream: &mut State<T>) -> Result<String, ParseError>
+where T: Iterator<Item = char>
+{
+    let mut name : String = String::new();
+
+    name.push(parse_predicate(|c| c.is_lowercase(), stream)
+             .map_err(|e| parse_error("parse_uncapitalized_identifier: failed parsing first letter", e))?);
+    name.extend(parse_many(|s|
+        parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
+             .map_err(|e| parse_error("parse_uncapitalized_identifier: failed parsing remaining letters", e))?);
+
+    skip_whitespace(stream)?;
+    
+    if name.is_empty() {
+        Err(parse_error_bottom("identifier is empty", stream))
+    } else {
+        Ok(name)
+    }
+}
+
+pub fn parse_capitalized_identifier<T>(stream: &mut State<T>) -> Result<String, ParseError>
+    where T: Iterator<Item = char>
+{
+    let mut name : String = String::new();
+
+    name.push(parse_predicate(|c| c.is_uppercase(), stream)
+             .map_err(|e| parse_error("parse_capitalized_identifier: failed parsing first letter", e))?);
+    name.extend(parse_many(|s|
+        parse_predicate(|c| c.is_alphanumeric() || c == '_', s), stream)
+             .map_err(|e| parse_error("parse_capitalized_identifier: failed parsing remaining letters", e))?);
+
+    skip_whitespace(stream)?;
+
+    Ok(name)
+}
+
+pub fn skip_empty_lines<T>(stream: &mut State<T>) -> Result<(), ParseError>
+    where T: Iterator<Item = char>,
+{
+    parse_many(parse_empty_line, stream)
+    .map_err(|e| parse_error("skip_empty_lines: failed.", e))?;
+
+    Ok(())
+}
+
+pub fn parse_empty_line<T>(stream: &mut State<T>) -> Result<(), ParseError>
+    where T: Iterator<Item = char>
+{
+    skip_whitespace(stream)?;
+    parse_char('\n', stream)
+    .map_err(|e| parse_error("parse_empty_line: failed parsing newline character", e))
+}
+
+pub fn parse_line<T>(stream: &mut State<T>) -> Result<String, ParseError>
+    where T: Iterator<Item = char>
+{
+    let line = parse_many( |s| parse_predicate(|c| c != '\n', s), stream)
+    .map_err(|e| parse_error("parse_line: failed", e))
+    .map(|cs| cs.into_iter().collect())?;
+
+    // Skip optional newline character (may be absent if end of stream). Discard error.
+    parse_char('\n', stream).ok();
+
+    Ok(line)
 }
 
 pub fn parse_char<T>(c: char, stream: &mut State<T>) -> Result<(), ParseError>
@@ -524,8 +624,9 @@ mod tests {
         let mut stream = state_from("blablabla.");
         assert!( parse_char('b', &mut stream).is_ok() );
         assert_eq!( stream.next(), Some('l') );
-        assert!( parse_char('b', &mut stream).is_err() );
-        assert_eq!( stream.next(), Some('b') );
+
+        let mut stream = state_from("blablabla.");
+        assert!( parse_char('x', &mut stream).is_err());
     }
 
 
@@ -552,7 +653,17 @@ mod tests {
 
         let mut stream = state_from("blablabla.");
         assert!( parse_string("greu", &mut stream).is_err() );
-        assert_eq!( stream.next(), Some('l') );
+    }
+
+    #[test]
+    fn test_parse_line() {
+        let mut stream = state_from("blablabla.\ngreu");
+        assert_eq!( parse_line(&mut stream), Ok(String::from("blablabla.")) );
+        assert_eq!( stream.next(), Some('g') );
+
+        let mut stream = state_from("blablabla.");
+        assert_eq!( parse_line(&mut stream), Ok(String::from("blablabla.")) );
+        assert_eq!( stream.next(), None );
     }
 
     #[test]
@@ -563,7 +674,6 @@ mod tests {
 
         let mut stream = state_from("bla.");
         assert!(try_parse(|s| parse_char('g', s), &mut stream).is_err() );
-        assert_eq!(stream.next(), Some('b'));
     }
 
 
@@ -602,7 +712,6 @@ mod tests {
                       |s| parse_string("greu", s),
                      &mut stream)
             .is_err() );
-        assert_eq!(stream.next(), Some('r'));
     }
 
 
@@ -634,6 +743,28 @@ mod tests {
             parse_cons_name(&mut stream),
             Ok(String::from("abcd")) );
         assert_eq!( stream.next(), Some(':'));
+    }
+
+    #[test]
+    fn test_parse_uncapitalized_identifier() {
+        assert_eq!(
+            parse_uncapitalized_identifier(&mut state_from("a")),
+            Ok(String::from("a")) );
+
+        assert_eq!(
+            parse_uncapitalized_identifier(&mut state_from("bla")),
+            Ok(String::from("bla")) );
+    }
+
+    #[test]
+    fn test_parse_capitalized_identifier() {
+        assert_eq!(
+            parse_capitalized_identifier(&mut state_from("A")),
+            Ok(String::from("A")) );
+
+        assert_eq!(
+            parse_capitalized_identifier(&mut state_from("Bla")),
+            Ok(String::from("Bla")) );
     }
 
     #[test]
@@ -702,18 +833,72 @@ mod tests {
         
 
     #[test]
-    fn test_parse_cons() {
+    fn test_parse_cons_declaration() {
         assert_eq!(
-            parse_cons(&mut state_from("abcd: A")),
+            parse_cons_declaration(&mut state_from("abcd: A")),
             Ok((String::from("abcd"), t_con("A"))) );
+
+        assert_eq!(
+            parse_cons_declaration(&mut state_from("abcd: a -> b")),
+            Ok((String::from("abcd"), t_fun(t_var_0("a"), t_var_0("b")))) );
+    }
+
+    #[test]
+    fn test_parse_cons_body() {
+        assert_eq!(
+            parse_cons_body(&mut state_from("> a")),
+            Ok(String::from("a")) );
+
+        assert_eq!(
+            parse_cons_body(&mut state_from("> {x}\n> {y}")),
+            Ok(String::from("{x}\n{y}")) );
+
+        assert_eq!(
+            parse_cons_body(&mut state_from("> {x}\n> {y}\n> {z}")),
+            Ok(String::from("{x}\n{y}\n{z}")) );
+    }
+
+    #[test]
+    fn test_parse_cons_definition() {
+        assert_eq!(
+            parse_cons_definition(&mut state_from("abcd\n> a")),
+            Ok((String::from("abcd"), vec![], String::from("a"))) );
+
+        assert_eq!(
+            parse_cons_definition(&mut state_from("f x y\n> {x}\n> {y}")),
+            Ok((String::from("f"), vec![String::from("x"), String::from("y")], String::from("{x}\n{y}"))) );
+    }
+
+    #[test]
+    fn test_parse_cons() {
+        let input = "f: a -> b -> c\n\
+                     f x y\n\
+                     > {x}\n\
+                     > {y}\n";
+        assert_eq!(
+            parse_cons(&mut state_from(input)),
+            Ok((String::from("f"), t_fun(t_var_0("a"), t_fun(t_var_0("b"), t_var_0("c"))),
+                    vec!["x".to_string(), "y".to_string()],
+                    String::from("{x}\n{y}")))
+        );
     }
 
     #[test]
     fn test_parse_constructors() {
+        let input = "abcd: A\n\
+                     abcd\n\
+                     > a\n\
+                     \n\
+                     f: a -> b -> c\n\
+                     f x y\n\
+                     > {x}\n\
+                     > {y}";
         assert_eq!(
-            parse_constructors(&mut state_from("abcd: A\nf: a -> b")),
-            Ok([(String::from("abcd"), t_con("A")),
-                (String::from("f"), t_fun(t_var_0("a"), t_var_0("b")))
+            parse_constructors(&mut state_from(input)),
+            Ok([(String::from("abcd"), t_con("A"),
+                    vec![], String::from("a")),
+                (String::from("f"),  t_fun(t_var_0("a"), t_fun(t_var_0("b"), t_var_0("c"))),
+                    vec!["x".to_string(), "y".to_string()], String::from("{x}\n{y}"))
                ].iter().cloned().collect())
             );
     }

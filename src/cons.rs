@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 use crate::type_sy::{VarNames, Type, var_names, arity, mgu, distinguish};
 use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con, t_int, t_double};
+use crate::util::{trim_newline};
 
 #[derive(PartialEq)]
 #[derive(Eq)]
@@ -139,8 +140,8 @@ impl SpecialCons {
                             continue
                         }
                         Ok(_) => {
-                            input.trim();
-                            break Value(input)
+                            let trimmed = input.trim();
+                            break Value(trimmed.to_string())
                         }
                     };
                 }
@@ -155,18 +156,18 @@ impl SpecialCons {
                             println!("Failed to read line.");
                             continue
                         }
-                        Ok(_) =>
-                            match input.trim().parse::<usize>() {
+                        Ok(_) => {
+                            let trimmed = input.trim();
+                            match trimmed.parse::<usize>() {
                                 Err(_) => {
                                     println!("Expecting an integer.");
                                     continue
                                 },
                                 Ok(_) => {
-                                    input.trim();
-                                    println!("TRIMMED {}END", &input);
-                                    break Value(input)
+                                    break Value(trimmed.to_string())
                                 }
                             }
+                        }
                     };
                 }
             }
@@ -187,8 +188,8 @@ impl SpecialCons {
                                     continue
                                 }
                                 Ok(_) => {
-                                    input.trim();
-                                    break Value(input)
+                                    let trimmed = input.trim();
+                                    break Value(trimmed.to_string())
                                 }
                             }
                     };
@@ -205,8 +206,8 @@ impl SpecialCons {
                             continue
                         }
                         Ok(_) => {
-                            input.trim();
-                            break Value(input)
+                            let trimmed = input.trim();
+                            break Value(trimmed.to_string())
                         }
                     };
                 }

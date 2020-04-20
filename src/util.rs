@@ -3,6 +3,15 @@
 use std::collections::VecDeque;
 use std::fmt::Display;
 
+pub fn trim_newline(s: &mut String) {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+}
+
 // Duplicates and elements of the first list, are removed from the
 // the second list, but if the first list contains duplicates, so will
 // the result.

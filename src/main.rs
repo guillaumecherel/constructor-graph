@@ -190,7 +190,7 @@ where F: Fn(&Cons) -> String,
                     if trimmed.is_empty() {
                         break 0
                     } else {
-                        match input.trim().parse::<usize>() {
+                        match trimmed.parse::<usize>() {
                             Err(e) => {
                                 println!("Failed to parse input: {}", e);
                                 continue

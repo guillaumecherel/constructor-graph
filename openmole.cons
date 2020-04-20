@@ -1,7 +1,3 @@
-test: Int -> SCRIPT
-test i
-> pre{i}post
-
 calibrate: PosteriorDistribution x y -> SCRIPT
 calibrate x
 > {x}

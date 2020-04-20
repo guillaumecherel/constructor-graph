@@ -9,6 +9,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use crate::type_sy::{Type};
 use crate::type_sy::{t_fun, t_con, t_var_0, t_param};
+use crate::template::{Template, TemplateBit};
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -62,7 +63,7 @@ impl Error for ParseError {
     }
 }
 
-pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type, Vec<String>, String)>, ParseError>
+pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type, Vec<String>, Template)>, ParseError>
     where T: Iterator<Item = char>,
 {
     let res = parse_many(
@@ -79,7 +80,7 @@ pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type,
     Ok(res)
 }
 
-pub fn parse_cons<T>(stream: &mut State<T>) -> Result<(String, Type, Vec<String>, String), ParseError>
+pub fn parse_cons<T>(stream: &mut State<T>) -> Result<(String, Type, Vec<String>, Template), ParseError>
     where T: Iterator<Item = char>
 {
     let (name1, typ) = parse_cons_declaration(stream)
@@ -111,7 +112,7 @@ pub fn parse_cons_declaration<T>(stream: &mut State<T>) -> Result<(String, Type)
     Ok((name, t))
 }
 
-pub fn parse_cons_definition<T>(stream: &mut State<T>) -> Result<(String, Vec<String>, String), ParseError>
+pub fn parse_cons_definition<T>(stream: &mut State<T>) -> Result<(String, Vec<String>, Template), ParseError>
 where T: Iterator<Item = char>
 {
     let (name, args) = parse_cons_args(stream)
@@ -144,34 +145,76 @@ where T: Iterator<Item = char>
     .map_err(|e| parse_error("parse_cons_arg_name: failed.", e))
 }
 
-pub fn parse_cons_body<T>(stream: &mut State<T>) -> Result<String, ParseError>
+pub fn parse_cons_body<T>(stream: &mut State<T>) -> Result<Template, ParseError>
 where T: Iterator<Item = char>
 {
-    pub fn parse_body_line<T>(stream: &mut State<T>) -> Result<String, ParseError>
+    pub fn parse_arg<T>(stream: &mut State<T>) -> Result<String, ParseError>
+    where T: Iterator<Item = char>
+    {
+        parse_parenthesized('{', '}', parse_uncapitalized_identifier, stream)
+    }
+
+    pub fn parse_body_line<T>(stream: &mut State<T>) -> Result<Vec<TemplateBit>, ParseError>
     where T: Iterator<Item = char>
     {
         parse_string("> ", stream)
         .map_err(|e| parse_error("parse_body_line: failed parsing line prefix", e))?;
 
-        parse_line(stream)
-        .map_err(|e| parse_error("parse_body_line: failed parsing line", e))
+        let indent : usize = parse_many(parse_whitespace, stream)?.len();
+
+        let mut template_bits: Vec<TemplateBit> = Vec::new();
+
+        match try_parse(parse_arg, stream) {
+            Ok(arg) => template_bits.push(TemplateBit::Key(indent, arg)),
+            Err(_) => (),
+        }
+
+        loop {
+            match try_parse(parse_empty_line, stream) {
+                Ok(_) => {
+                    match template_bits.last_mut() {
+                        None => template_bits.push(TemplateBit::Raw('\n'.to_string())),
+                        Some(last) => match last {
+                            TemplateBit::Raw(s) => s.push('\n'),
+                            TemplateBit::Key(_, _) =>
+                                template_bits.push(TemplateBit::Raw('\n'.to_string())),
+                        }
+                    }
+                    break
+                }
+                Err(_) => (),
+            };
+            match try_parse(parse_arg, stream) {
+                Ok(arg) => {
+                    template_bits.push(TemplateBit::Key(0, arg));
+                    continue
+                },
+                Err(_) => (),
+            };
+            match try_parse(parse_any_char, stream) {
+                Ok(c) => {
+                    match template_bits.last_mut() {
+                        None => template_bits.push(TemplateBit::Raw(c.to_string())),
+                        Some(last) => match last {
+                            TemplateBit::Raw(s) => s.push(c),
+                            TemplateBit::Key(_, _) =>
+                                template_bits.push(TemplateBit::Raw(c.to_string())),
+                        }
+                    }
+                },
+                Err(_) => break, //reaches end of stream
+            };
+        }
+
+        Ok(template_bits)
     }
 
-    let mut lines = parse_many(parse_body_line, stream)
+    let lines = parse_many(parse_body_line, stream)
     .map_err(|e| parse_error("parse_cons_body: failed parsing a line of body", e))?;
 
     skip_empty_lines(stream)?;
 
-    match lines.split_first_mut() {
-        Some((first, tail)) => {
-            for l in tail {
-                first.push('\n');
-                first.push_str(l);
-            }
-            Ok(first.to_string())
-        }
-        None => Ok(String::new()),
-    }
+    Ok(Template(lines.into_iter().flatten().collect()))
 }
 
 pub fn parse_cons_name<T>(stream: &mut State<T>) -> Result<String, ParseError>
@@ -202,7 +245,7 @@ pub fn parse_function_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
 {
     let left =
         parse_alt(
-            |s| parse_parenthesized(parse_type, s),
+            |s| parse_parenthesized('(', ')', parse_type, s),
             |s| parse_alt(
                 parse_parametric_type,
                 |s| parse_alt(
@@ -226,7 +269,7 @@ pub fn parse_function_type<T>(stream: &mut State<T>) -> Result<Type, ParseError>
 
     let right =
         parse_alt(
-            |s| parse_parenthesized(parse_type, s),
+            |s| parse_parenthesized('(', ')', parse_type, s),
             parse_type,
             stream)
         .map_err(|e| parse_error("parse_function_type: failed parsing right part", e))?;
@@ -263,7 +306,7 @@ where T: Iterator<Item = char>
     {
         let res =
             parse_alt(
-                |s| parse_parenthesized(parse_type, s),
+                |s| parse_parenthesized('(', ')', parse_type, s),
                 |s| parse_alt(
                     parse_type_variable,
                     parse_type_constant,
@@ -365,6 +408,17 @@ pub fn parse_char<T>(c: char, stream: &mut State<T>) -> Result<(), ParseError>
     }
 }
 
+pub fn parse_any_char<T>(stream: &mut State<T>) -> Result<char, ParseError>
+    where T: Iterator<Item = char>
+{
+    match stream.next() {
+        None => Err(parse_error_bottom(
+            &format!("Expected any character but reached end of stream."),
+            stream )),
+        Some(d) => Ok(d),
+    }
+}
+
 pub fn parse_whitespace<T>(stream: &mut State<T>) -> Result<(), ParseError>
     where T: Iterator<Item = char>
 {
@@ -408,13 +462,13 @@ pub fn parse_string<T>(s: &str, stream: &mut State<T>) -> Result<(), ParseError>
     Ok(())
 }
 
-pub fn parse_parenthesized<T, P, U>(p: P, stream: &mut State<T>) -> Result<U, ParseError>
+pub fn parse_parenthesized<T, P, U>(left: char, right: char, p: P, stream: &mut State<T>) -> Result<U, ParseError>
 where T: Iterator<Item = char>,
       P: FnOnce(&mut State<T>) -> Result<U, ParseError>,
       U: Debug
 {
-    parse_char('(', stream)
-    .map_err(|e| parse_error("parse_parenthesized: failed parsing '('", e))?;
+    parse_char(left, stream)
+    .map_err(|e| parse_error(&format!("parse_parenthesized: failed parsing {}", left), e))?;
     skip_whitespace(stream)?;
 
     let res = p(stream)
@@ -422,8 +476,8 @@ where T: Iterator<Item = char>,
 
     skip_whitespace(stream)?;
 
-    parse_char(')', stream)
-    .map_err(|e| parse_error("parse_parenthesized: failed parsing ')'", e))?;
+    parse_char(right, stream)
+    .map_err(|e| parse_error(&format!("parse_parenthesized: failed parsing {}", right), e))?;
 
     skip_whitespace(stream)?;
 
@@ -718,17 +772,17 @@ mod tests {
     #[test]
     fn test_parse_parenthesized() {
         assert!(
-            parse_parenthesized(|s| parse_string("abc", s), &mut state_from("( abc )"))
+            parse_parenthesized('(', ')', |s| parse_string("abc", s), &mut state_from("( abc )"))
             .is_ok());
 
         assert_eq!(
-            parse_parenthesized(
+            parse_parenthesized('(', ')', 
                 |s| parse_predicate(|c| c.is_alphanumeric(), s),
                 &mut state_from("(a)")),
             Ok('a'));
 
         assert!(
-            parse_parenthesized(|s| parse_string("ab", s), &mut state_from("( abc )"))
+            parse_parenthesized('(', ')', |s| parse_string("ab", s), &mut state_from("( abc )"))
             .is_err());
     }
 
@@ -819,7 +873,7 @@ mod tests {
             Ok(t_fun(t_con("A"), t_con("B"))) );
 
         assert_eq!(
-            parse_parenthesized(parse_function_type, &mut state_from("(a -> b)")),
+            parse_parenthesized('(', ')', parse_function_type, &mut state_from("(a -> b)")),
             Ok(t_fun(t_var_0("a"), t_var_0("b"))) );
 
         assert_eq!(
@@ -847,26 +901,38 @@ mod tests {
     fn test_parse_cons_body() {
         assert_eq!(
             parse_cons_body(&mut state_from("> a")),
-            Ok(String::from("a")) );
+            Ok(Template(vec![TemplateBit::raw("a")])) );
 
         assert_eq!(
             parse_cons_body(&mut state_from("> {x}\n> {y}")),
-            Ok(String::from("{x}\n{y}")) );
+            Ok(Template(vec![TemplateBit::key(0, "x")
+                                , TemplateBit::raw("\n")
+                                , TemplateBit::key(0, "y")])) );
 
         assert_eq!(
             parse_cons_body(&mut state_from("> {x}\n> {y}\n> {z}")),
-            Ok(String::from("{x}\n{y}\n{z}")) );
+            Ok(Template(vec![TemplateBit::key(0, "x")
+                                , TemplateBit::raw("\n")
+                                , TemplateBit::key(0, "y")
+                                , TemplateBit::raw("\n")
+                                , TemplateBit::key(0, "z")])) );
     }
 
     #[test]
     fn test_parse_cons_definition() {
+        let input = "abcd\n> a";
         assert_eq!(
-            parse_cons_definition(&mut state_from("abcd\n> a")),
-            Ok((String::from("abcd"), vec![], String::from("a"))) );
+            parse_cons_definition(&mut state_from(input)),
+            Ok((String::from("abcd"), vec![],
+                Template(vec![TemplateBit::raw("a")]))) );
 
+        let input = "f x y\n> {x}\n> {y}";
         assert_eq!(
-            parse_cons_definition(&mut state_from("f x y\n> {x}\n> {y}")),
-            Ok((String::from("f"), vec![String::from("x"), String::from("y")], String::from("{x}\n{y}"))) );
+            parse_cons_definition(&mut state_from(input)),
+            Ok((String::from("f"), vec![String::from("x"), String::from("y")],
+                Template(vec![TemplateBit::key(0, "x")
+                                 , TemplateBit::raw("\n")
+                                 , TemplateBit::key(0, "y")]))) );
     }
 
     #[test]
@@ -879,7 +945,10 @@ mod tests {
             parse_cons(&mut state_from(input)),
             Ok((String::from("f"), t_fun(t_var_0("a"), t_fun(t_var_0("b"), t_var_0("c"))),
                     vec!["x".to_string(), "y".to_string()],
-                    String::from("{x}\n{y}")))
+                    Template(vec![TemplateBit::key(0, "x")
+                                     , TemplateBit::raw("\n")
+                                     , TemplateBit::key(0, "y")
+                                     , TemplateBit::raw("\n")])))
         );
     }
 
@@ -896,9 +965,13 @@ mod tests {
         assert_eq!(
             parse_constructors(&mut state_from(input)),
             Ok([(String::from("abcd"), t_con("A"),
-                    vec![], String::from("a")),
+                    vec![],
+                    Template(vec![TemplateBit::raw("a\n")])),
                 (String::from("f"),  t_fun(t_var_0("a"), t_fun(t_var_0("b"), t_var_0("c"))),
-                    vec!["x".to_string(), "y".to_string()], String::from("{x}\n{y}"))
+                    vec!["x".to_string(), "y".to_string()],
+                    Template(vec![TemplateBit::key(0, "x")
+                                     , TemplateBit::raw("\n")
+                                     , TemplateBit::key(0, "y")]))
                ].iter().cloned().collect())
             );
     }

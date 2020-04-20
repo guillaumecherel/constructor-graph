@@ -1,5 +1,6 @@
 mod cat;
 mod parse;
+mod template;
 mod cons;
 mod openmole;
 mod util;
@@ -16,6 +17,7 @@ use structopt::StructOpt;
 
 use type_sy::{Type};
 use type_sy::{t_fun, t_con, t_var_0};
+use template::Template;
 
 use cat::{
     morph_schemes_from_cons, MorphScheme, Morphism, morphisms_bf, morphisms_from_source,
@@ -58,7 +60,7 @@ fn main() {
     //         &input_cons.iter().map(|(nam,cons,typ,_,_)| (nam.clone(), cons.clone(), typ.clone())).collect()
     //     )
     // };
-    let script = |c: &Cons| -> String { cons::script_template( c, &input_cons ) };
+    let script = |c: &Cons| -> Result<String, String> { cons::script_template( c, &input_cons ) };
 
     // Types that have no constructors:
     let no_cons = list_no_cons(&all_cons_sig);
@@ -80,7 +82,7 @@ fn main() {
 }
 
 
-fn cons_from_file(filename: &str) -> Result<Vec<(String, Cons, Type, Vec<String>, String)>, parse::ParseError> {
+fn cons_from_file(filename: &str) -> Result<Vec<(String, Cons, Type, Vec<String>, Template)>, parse::ParseError> {
 
     let input_stream = fs::read_to_string(filename)
         .expect(&format!("Could not read file {}", filename));
@@ -99,7 +101,7 @@ fn start_type() -> Type {
     t_fun(t_con("SCRIPT"), t_con("SCRIPT"))
 }
 
-fn output_info(cons: &Vec<(String, Cons, Type, Vec<String>, String)>, morph_schemes: &Vec<MorphScheme>) {
+fn output_info(cons: &Vec<(String, Cons, Type, Vec<String>, Template)>, morph_schemes: &Vec<MorphScheme>) {
     println!("User defined Constructors");
     for (name, c, t, _, _) in cons.iter() {
       println!("    {}. {} : {}", c, name, t);
@@ -148,7 +150,7 @@ fn output_gv(morph_schemes: &Vec<MorphScheme>) {
 }
 
 fn interact<F>(morph_schemes: &Vec<MorphScheme>, script: F)
-where F: Fn(&Cons) -> String,
+where F: Fn(&Cons) -> Result<String, String>,
 {
     let stop_type = t_con("SCRIPT");
     let mut cur_type = start_type();
@@ -216,6 +218,6 @@ where F: Fn(&Cons) -> String,
     println!("---- Script ----");
 
     let the_script = pair(cur_morphism.cons, Id);
-    println!("{}", script(&uncat_cons(&the_script)));
+    println!("{}", script(&uncat_cons(&the_script)).expect("SCRIPT NOT OK."));
 }
 

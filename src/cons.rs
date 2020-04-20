@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 
 use std::fmt;
-use std::iter;
 use std::io;
 use std::io::Write;
 use std::collections::HashSet;
 
 use crate::type_sy::{VarNames, Type, var_names, arity, mgu, distinguish};
 use crate::type_sy::{t_var_0, t_fun, t_fun_seq, t_con, t_int, t_double};
-use crate::util::{trim_newline};
+use crate::util;
+use crate::template::{Template, TemplateBit};
 
 #[derive(PartialEq)]
 #[derive(Eq)]
@@ -132,7 +132,7 @@ impl SpecialCons {
             SpecialCons::ReadText => {
                 loop {
                     print!("Reading Text> ");
-                    io::stdout().flush();
+                    io::stdout().flush().unwrap();
                     let mut input = String::new();
                     match io::stdin().read_line(&mut input) {
                         Err(_) => {
@@ -149,7 +149,7 @@ impl SpecialCons {
             SpecialCons::ReadInt => {
                 loop {
                     print!("Reading Int> ");
-                    io::stdout().flush();
+                    io::stdout().flush().unwrap();
                     let mut input = String::new();
                     match io::stdin().read_line(&mut input) {
                         Err(_) => {
@@ -174,7 +174,7 @@ impl SpecialCons {
             SpecialCons::ReadDouble => {
                 loop {
                     print!("Reading Double> ");
-                    io::stdout().flush();
+                    io::stdout().flush().unwrap();
                     let mut input = String::new();
                     match io::stdin().read_line(&mut input) {
                         Err(_) => {
@@ -198,7 +198,7 @@ impl SpecialCons {
             SpecialCons::ReadFilePath => {
                 loop {
                     print!("Reading Path> ");
-                    io::stdout().flush();
+                    io::stdout().flush().unwrap();
                     let mut input = String::new();
                     match io::stdin().read_line(&mut input) {
                         Err(_) => {
@@ -370,7 +370,7 @@ pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Cons, Type)>) -> String {
     run_pair(c, run_any, run_any,
         |f, g| format!("{}\n{}",
             script_cons(f, cons_def),
-            indent(2, &script_cons(g, cons_def))))
+            util::indent(2, &script_cons(g, cons_def))))
     // match Data(i)
     .or_else( || run_data(c, |&i| format!("{}", cons_def[i].0)) )
     // match Value(s)
@@ -378,13 +378,13 @@ pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Cons, Type)>) -> String {
     .expect(&format!("I don't know how to write script for {}", &c))
 }
 
-pub fn script_template(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, String)>) -> String {
+pub fn script_template(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, Template)>) -> Result<String, String> {
 
-    pub fn go(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, String)>) -> (Vec<String>, String) {
+    pub fn go(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, Template)>) -> (Vec<String>, Template) {
         // match Pair(f, x)
         run_pair(c, run_any, run_any,
             |f, g| {
-                let (args, body) = go(f, cons_def);
+                let (args, mut body) = go(f, cons_def);
                 let (args_g, body_g) = go(g, cons_def);
 
                 if !args_g.is_empty() {
@@ -393,35 +393,23 @@ pub fn script_template(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>
 
                 // replace any occurence of args[0] in body by body_g
                 match args.split_first() {
-                    Some((arg0, args_left)) => 
-                        (args_left.to_owned(), body.replace(&format!("{{{}}}", arg0), &body_g)),
+                    Some((arg0, args_left)) => {
+                        body.replace(&arg0, &body_g.to_string().unwrap());
+                        (args_left.to_owned(), body)
+                    }
                     None => panic!("No more free argument in {}", f),
                 }
         })
         // match Data(i)
         .or_else( || run_data(c, |&i| (cons_def[i].3.clone(), cons_def[i].4.clone())) )
         // match Value(s)
-        .or_else( || run_value(c, |s| (Vec::new(), s.clone())) )
+        .or_else( || run_value(c, |s| (Vec::new(), Template(vec![TemplateBit::raw(s)]))) )
         .expect(&format!("I don't know how to write script for {}", &c))
     }
 
-    let (_, script) = go(c, cons_def);
+    let (_, template) = go(c, cons_def);
 
-    script
-}
-
-fn indent(width: usize, txt: &str) -> String {
-    let indent: String = iter::repeat(" ").take(width).collect();
-    let mut lines = txt.lines();
-    let mut result: String = lines.next().map(|l| String::from(&indent) + l).unwrap_or("".to_string()).to_string();
-
-    for l in lines {
-        result.push_str("\n");
-        result.push_str(&indent);
-        result.push_str(l);
-    }
-
-    result
+    template.to_string()
 }
 
 //Returns a list of types for which no constructor was found

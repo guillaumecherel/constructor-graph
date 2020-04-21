@@ -49,7 +49,14 @@ fn main() {
     //let input_cons = cons::cons_test();
     //let input_cons = openmole::cons();
     let predef_cons = cons::predef_cons();
-    let input_cons = cons_from_file("openmole.cons").expect("Could not read cons input file.");
+    let input_cons = match cons_from_file("openmole.cons") {
+        Err(parse_err) => {
+            eprintln!("Could not parse constructor input file.");
+            eprintln!("Parse Error: {}", parse_err);
+            panic!();
+        }
+        Ok(x) => x,
+    };
     let all_cons_sig: Vec<(String, Cons, Type)> =
         input_cons.iter().map(|(nam,cons,typ,_,_)| (nam.clone(), cons.clone(), typ.clone()))
         .chain(predef_cons.iter().map(|(nam,cons,typ,_)| (nam.clone(), cons.clone(), typ.clone())))

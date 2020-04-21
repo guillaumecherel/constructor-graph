@@ -4,10 +4,22 @@ use std::collections::VecDeque;
 use std::fmt::Display;
 use std::iter;
 
-pub fn indent(width: usize, txt: &str) -> String {
+pub fn indent(width: usize, txt: &str, skip_first_line: bool) -> String {
     let indent: String = iter::repeat(" ").take(width).collect();
     let mut lines = txt.lines();
-    let mut result: String = lines.next().map(|l| String::from(&indent) + l).unwrap_or("".to_string()).to_string();
+
+    // First line.
+    let mut result: String = String::new();
+
+    match lines.next() {
+        None => (),
+        Some(l) => {
+            if !skip_first_line {
+                result.push_str(&indent);
+            }
+            result.push_str(l);
+        }
+    }
 
     for l in lines {
         result.push_str("\n");
@@ -142,6 +154,12 @@ mod tests {
         assert_eq!(
             union(VecDeque::from(vec!['a', 'b', 'c', 'a']), VecDeque::from(vec!['b', 'x', 'y', 'x'])),
             VecDeque::from(vec!['a', 'b', 'c', 'a', 'x', 'y']))
+    }
+    
+    #[test]
+    fn test_indent() {
+        assert_eq!(indent(2, "a\n b", false), "  a\n   b".to_string());
+        assert_eq!(indent(2, "a\n b", true), "a\n   b".to_string());
     }
 }
 

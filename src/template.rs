@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::collections::HashSet;
+
 use crate::util;
 
 #[derive(Clone)]
@@ -29,11 +31,22 @@ impl Template {
     //     Template(sequence)
     // }
 
+    pub fn keys<'a>(&'a self) -> HashSet<&'a String>{
+        let get_key = |b: &'a TemplateBit| -> Option<&'a String> {
+            match b {
+                TemplateBit::Key(s) => Some(&s),
+                _ => None,
+            }
+        };
+
+        self.0.iter().filter_map(get_key).collect()
+    }
+
     pub fn replace(&mut self, key: &str, replacement: &str)  {
         for i in 0..self.0.len() {
             match &self.0[i] {
-                TemplateBit::Key(indent, s) => if s == key {
-                    self.0[i] = TemplateBit::Raw(util::indent(*indent, replacement));
+                TemplateBit::Key(s) => if s == key {
+                    self.0[i] = TemplateBit::Raw(replacement.to_string());
                 }
                 _ => (),
             }
@@ -41,14 +54,29 @@ impl Template {
     }
 
     pub fn to_string(self) -> Result<String, String> {
+        let mut current_indent = 0;
+        let mut line_start = true;
         let mut result = String::new();
         for x in self.0 {
             match x {
-                TemplateBit::Raw(s) => {
-                   result.push_str(&s);
-                   ()
+                TemplateBit::Indent(indent) => {
+                    if !result.is_empty() {
+                        result.push_str("\n");
+                    }
+                    current_indent = indent;
+                    line_start = true;
+                    ()
                 }
-                TemplateBit::Key(_, k) =>
+                TemplateBit::Raw(s) => {
+                    if line_start {
+                       result.push_str(&util::indent(current_indent, &s, false));
+                       line_start = false;
+                    } else {
+                       result.push_str(&util::indent(current_indent, &s, true));
+                    }
+                    ()
+                },
+                TemplateBit::Key(k) =>
                    return Err(format!("Template::to_string: keys remaining: {}", k)),
             }
         }
@@ -78,7 +106,8 @@ impl Template {
 #[derive(Eq)]
 pub enum TemplateBit {
     Raw(String),
-    Key(usize, String), //the first member usize represents the indentation
+    Key(String),
+    Indent(usize),
 }
 
 impl TemplateBit {
@@ -86,8 +115,8 @@ impl TemplateBit {
         TemplateBit::Raw(s.to_string())
     }
 
-    pub fn key(indent: usize, s: &str) -> TemplateBit {
-        TemplateBit::Key(indent, s.to_string())
+    pub fn key(s: &str) -> TemplateBit {
+        TemplateBit::Key(s.to_string())
     }
 }
 
@@ -98,20 +127,20 @@ mod tests {
     #[test]
     fn test_template_to_string() {
         
-        let mut template = Template(vec![TemplateBit::key(0, "x")]);
+        let mut template = Template(vec![TemplateBit::Indent(0), TemplateBit::key("x")]);
         template.replace("x", "Bla");
         assert_eq!(template.to_string(),
             Ok(String::from("Bla")));
 
-        let mut template = Template(vec![TemplateBit::key(1, "x")]);
+        let mut template = Template(vec![TemplateBit::Indent(1), TemplateBit::key("x")]);
         template.replace("x", "Bla\nBla");
         assert_eq!(template.to_string(),
             Ok(String::from(" Bla\n Bla")));
 
         let mut template = Template(vec![
-            TemplateBit::raw("A "), TemplateBit::key(0, "x"), TemplateBit::raw("\n"),
-            TemplateBit::key(1, "y"), TemplateBit::raw("\n"),
-            TemplateBit::key(0, "x")]);
+            TemplateBit::Indent(0), TemplateBit::raw("A "), TemplateBit::key("x"),
+            TemplateBit::Indent(1), TemplateBit::key("y"),
+            TemplateBit::Indent(0), TemplateBit::key("x")]);
         template.replace("x", "Bla");
         template.replace("y", "Greu");
         assert_eq!(template.to_string(),

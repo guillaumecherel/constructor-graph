@@ -10,9 +10,9 @@ diversity: Diversity Double -> SCRIPT
 diversity x
 > {x}
 
-seed: Text -> Seed
-seed name
-> {name}
+seed: Seed
+seed 
+> seed
 
 var_int: Text -> Var Int
 var_int name
@@ -25,7 +25,8 @@ var_double name
 inputs: InputList a -> Input b
 inputs list
 > Seq(
->    {list})
+>    {list}
+> )
 
 add_input: Var a -> InputList b -> InputList (Pair a b)
 add_input var list
@@ -39,10 +40,11 @@ single_input var
 mapped_inputs: MappedInputList a -> MappedInput b
 mapped_inputs list
 > Seq(
->    {list})
+>    {list}
+> )
 
-add_mapped_input: Var a -> MappedInputList b -> MappedInputList (Pair a b)
-add_mapped_input var list
+add_mapped_input: Var a -> Text -> MappedInputList b -> MappedInputList (Pair a b)
+add_mapped_input var mapped_name list 
 > {var} mapped "{mapped_name}",
 > {list}
 
@@ -53,10 +55,11 @@ single_mapped_input var mapped_name
 mapped_outputs: MappedOutputList a -> MappedOutput b
 mapped_outputs list
 > Seq(
->    {list})
+>    {list}
+> )
 
-add_mapped_output: Var a -> MappedOutputList b -> MappedOutputList (Pair a b)
-add_mapped_output var list
+add_mapped_output: Var a -> Text -> MappedOutputList b -> MappedOutputList (Pair a b)
+add_mapped_output var mapped_name list
 > {var} mapped "{mapped_name}",
 > {list}
 
@@ -67,7 +70,8 @@ single_mapped_output var mapped_name
 outputs: OutputList a -> Output b
 outputs list
 > Seq(
->    {list})
+>    {list}
+> )
 
 add_output: Var a -> OutputList b -> OutputList (Pair a b)
 add_output var list
@@ -80,16 +84,16 @@ single_output var
 
 scala_model: Text -> Input x -> Output y -> Model x y
 scala_model source inputs outputs
->   ScalaTask("{source}") set (
->     inputs += {inputs},
->     outputs += {outputs}
->   )
+> ScalaTask("{source}") set (
+>   inputs += {inputs},
+>   outputs += {outputs}
+> )
 
-netlogo_6_model: FilePath -> Text -> Text -> Text -> MappedInput x -> MappedOutput y -> Seed -> Model x y
+netlogo_6_model: FilePath -> Text -> Text -> MappedInput x -> MappedOutput y -> Seed -> Model x y
 netlogo_6_model source netlogo_cmd_setup netlogo_cmd_go mapped_inputs mapped_outputs seed
 > val fireTask =
 >   NetLogo6Task(
->     workDirectory / "Fire.nlogo", 
+>     workDirectory / "{source}", 
 >     List(
 >       "random-seed ${{seed}}",
 >       "{netlogo_cmd_setup}",
@@ -97,27 +101,23 @@ netlogo_6_model source netlogo_cmd_setup netlogo_cmd_go mapped_inputs mapped_out
 >     ) set (
 >     inputs += {seed},
 >     inputs += {mapped_inputs},
->     outputs += seed,
+>     outputs += {seed},
 >     outputs += {mapped_outputs}
 >   )
 
-calibrate: Model x y -> Bounds x -> Int -> Output y -> Int -> Pareto x
-calibrate model bounds population_size 
+nsga2: Model x y -> Bounds x -> Int -> Output y -> Int -> Int -> Pareto x
+nsga2 model bounds population_size objectives termination parallelism
 > NSGA2Evolution(
->   evaluation = modelTask,
->   objectives = {objective},
->   mu = 200,
->   genome = Seq(
->     param1 in (0.0, 99.0),
->     param2 in (0.0, 99.0),
->     param3 in (0, 5),
->     param4 in List("apple", "banana", "strawberry")),
->   termination = 100,
->   parallelism = 10
+>   evaluation = {model},
+>   objectives = {objectives},
+>   mu = {population_size},
+>   genome = {bounds},
+>   termination = {termination},
+>   parallelism = {parallelism}
 > ) hook (workDirectory / "path/to/a/directory")
 
 morris: Model x y -> Bounds x -> Output x -> Int -> Int -> MorrisSensitivityIndex x y
-morris model outputs repetitions levels
+morris model bounds outputs repetitions levels
 > SensitivityMorris(
 >   evaluation = {model},
 >   inputs = {bounds},
@@ -156,29 +156,31 @@ pse model genome_bounds grid parallelism termination seed output_frequency
 >   evaluation = {model},
 >   parallelism = {parallelism},
 >   termination = {termination},
->   genome = {bounds},
+>   genome = {genome_bounds},
 >   objectives = {grid},
->   stochastic = Stochastic(seed = myseed)
+>   stochastic = Stochastic(seed = {seed})
 > ) hook (workDirectory / "results", frequency = {output_frequency})
 
 grid: GridList x -> Grid x
 grid list
 > Seq(
->   {list})
+>   {list}
+> )
 
 add_grid: Var a -> a -> a -> a -> GridList b -> GridList (Pair a b)
 add_grid var min max by list
 > {var} in ({min} to {max} by {by}),
 > {list}
 
-single_grid: Var a -> a -> a -> GridList a
+single_grid: Var a -> a -> a -> a -> GridList a
 single_grid var min max by
 > {var} in ({min} to {max} by {by})
 
 bounds: BoundsList x -> Bounds x
 bounds list
 > Seq(
->   {list})
+>   {list}
+> )
 
 add_bound: Var a -> a -> a -> BoundsList b -> BoundsList (Pair a b)
 add_bound var min max list
@@ -192,11 +194,14 @@ single_bound var min max
 abc: Model x y -> Prior x -> Observed y -> Int -> Int -> Double -> Int -> Int -> PosteriorDistribution x y
 abc model prior data sample_size generated p_acc_min stop_sam_size par
 > IslandABC(
->   evaluation = {model},
->   prior = {prior},
->   observed = {data},
->   sample = {sam_size},
->   generated = {gen},
+>   evaluation = 
+>     {model},
+>   prior = 
+>     {prior},
+>   observed = 
+>      {data},
+>   sample = {sample_size},
+>   generated = {generated},
 >   minAcceptedRatio = {p_acc_min},
 >   stopSampleSize = {stop_sam_size},
 >   parallelism={par}
@@ -205,12 +210,13 @@ abc model prior data sample_size generated p_acc_min stop_sam_size par
 observed: ObservedList a -> Observed a
 observed list
 > Seq(
->   {list})
+>   {list}
+> )
 
 add_observed: Var a -> a -> ObservedList b -> ObservedList (Pair a b)
 add_observed var value obs_b
 > {var} -> {value},
-> obs_b
+> {obs_b}
 
 single_observed: Var a -> a -> ObservedList a
 single_observed var value
@@ -219,7 +225,8 @@ single_observed var value
 independant_priors: IndependentPriorsList a -> Prior a
 independant_priors x
 > IndependentPriors(
->   {x})
+>   {x}
+> )
 
 add_independant_prior: UnivariatePrior a -> IndependentPriorsList b -> IndependentPriorsList (Pair a b)
 add_independant_prior new_dist list
@@ -236,5 +243,5 @@ uniform_prior var low_bound up_bound
 
 beta_prior: Var a -> a -> a -> UnivariatePrior a
 beta_prior var alpha beta
-> UniformPrior({var}, {low_bound}, {up_bound}) 
+> UniformPrior({var}, {alpha}, {beta}) 
 

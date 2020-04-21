@@ -370,7 +370,7 @@ pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Cons, Type)>) -> String {
     run_pair(c, run_any, run_any,
         |f, g| format!("{}\n{}",
             script_cons(f, cons_def),
-            util::indent(2, &script_cons(g, cons_def))))
+            util::indent(2, &script_cons(g, cons_def), false)))
     // match Data(i)
     .or_else( || run_data(c, |&i| format!("{}", cons_def[i].0)) )
     // match Value(s)
@@ -397,7 +397,7 @@ pub fn script_template(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>
                         body.replace(&arg0, &body_g.to_string().unwrap());
                         (args_left.to_owned(), body)
                     }
-                    None => panic!("No more free argument in {}", f),
+                    None => panic!("No more free argument in {} while appling to {}", f, &body_g.to_string().unwrap()),
                 }
         })
         // match Data(i)

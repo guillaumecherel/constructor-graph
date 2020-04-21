@@ -3,12 +3,13 @@
 
 use std::fmt;
 use std::vec::Vec;
+use std::collections::HashSet;
 use std::str::Chars;
 use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
 use crate::type_sy::{Type};
-use crate::type_sy::{t_fun, t_con, t_var_0, t_param};
+use crate::type_sy::{t_fun, t_con, t_var_0, t_param, arity};
 use crate::template::{Template, TemplateBit};
 
 #[derive(Clone)]
@@ -49,7 +50,7 @@ impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ParseError::ParseError{msg, source} =>
-                write!(f, "{} Caused by: {}", msg, source),
+                write!(f, "{}\nCaused by: {}", msg, source),
             ParseError::ParseErrorBottom{msg, line, following} =>
                 write!(f, "{} Line {} Following: {}", msg, line, following),
         }
@@ -66,16 +67,19 @@ impl Error for ParseError {
 pub fn parse_constructors<T>(stream: &mut State<T>) -> Result<Vec<(String, Type, Vec<String>, Template)>, ParseError>
     where T: Iterator<Item = char>,
 {
-    let res = parse_many(
-        |s| {
-            let cons_list = parse_cons(s)
-                .map_err(|e| parse_error("parse_constructors: failed parsing cons.", e))?;
-            Ok(cons_list)
-        },
-        stream)?;
+    let mut res = Vec::new();
 
-    parse_end_of_stream(stream)
-    .map_err(|e| parse_error("parse_constructors: expected end of stream", e))?;
+    loop {
+        res.push(
+            parse_cons(stream)
+            .map_err(|e| parse_error("parse_constructors: failed parsing cons.", e))?
+        );
+
+        match try_parse(parse_end_of_stream, stream) {
+            Err(_) => continue,
+            Ok(_) => break,
+        }
+    }
 
     Ok(res)
 }
@@ -94,6 +98,8 @@ pub fn parse_cons<T>(stream: &mut State<T>) -> Result<(String, Type, Vec<String>
 
     if name1 != name2 {
         Err(parse_error_bottom("parse_cons: function name in declaration does not match function name in definition", stream))
+    } else if arity(&typ) != args.len() as u32 {
+        Err(parse_error_bottom(&format!("parse_cons: found {} arguments in definition of contsructor {}, expected {}", args.len(), name1, arity(&typ)), stream))
     } else {
         Ok((name1, typ, args, body))
     }
@@ -124,7 +130,21 @@ where T: Iterator<Item = char>
     let body = parse_cons_body(stream)
     .map_err(|e| parse_error("parse_cons_definition: failed parsing cons body", e))?;
 
-    Ok((name, args, body))
+    // Check that all keys in the template "body" are present as arguments and vice versa
+    let args_set : HashSet<&String> = args.iter().collect();
+    let keys_set : HashSet<&String> = body.keys();
+
+    if args_set != keys_set {
+        Err(parse_error_bottom(
+            &format!("parse_cons_definition: some arguments are absent from the body \
+                    or arguments found in the body are absent from the argument list: \
+                    {} in constructor: {}",
+                    args_set.symmetric_difference(&keys_set).fold(String::new(), |s, a| s + a + ", "),
+                    name),
+            stream))
+    } else {
+        Ok((name, args, body))
+    }
 }
 
 pub fn parse_cons_args<T>(stream: &mut State<T>) -> Result<(String, Vec<String>), ParseError>
@@ -164,29 +184,16 @@ where T: Iterator<Item = char>
 
         let mut template_bits: Vec<TemplateBit> = Vec::new();
 
-        match try_parse(parse_arg, stream) {
-            Ok(arg) => template_bits.push(TemplateBit::Key(indent, arg)),
-            Err(_) => (),
-        }
+        template_bits.push(TemplateBit::Indent(indent));
 
         loop {
             match try_parse(parse_empty_line, stream) {
-                Ok(_) => {
-                    match template_bits.last_mut() {
-                        None => template_bits.push(TemplateBit::Raw('\n'.to_string())),
-                        Some(last) => match last {
-                            TemplateBit::Raw(s) => s.push('\n'),
-                            TemplateBit::Key(_, _) =>
-                                template_bits.push(TemplateBit::Raw('\n'.to_string())),
-                        }
-                    }
-                    break
-                }
+                Ok(_) => break,
                 Err(_) => (),
             };
             match try_parse(parse_arg, stream) {
                 Ok(arg) => {
-                    template_bits.push(TemplateBit::Key(0, arg));
+                    template_bits.push(TemplateBit::Key(arg));
                     continue
                 },
                 Err(_) => (),
@@ -197,7 +204,7 @@ where T: Iterator<Item = char>
                         None => template_bits.push(TemplateBit::Raw(c.to_string())),
                         Some(last) => match last {
                             TemplateBit::Raw(s) => s.push(c),
-                            TemplateBit::Key(_, _) =>
+                            _ =>
                                 template_bits.push(TemplateBit::Raw(c.to_string())),
                         }
                     }
@@ -478,8 +485,6 @@ where T: Iterator<Item = char>,
 
     parse_char(right, stream)
     .map_err(|e| parse_error(&format!("parse_parenthesized: failed parsing {}", right), e))?;
-
-    skip_whitespace(stream)?;
 
     Ok(res)
 }
@@ -901,21 +906,20 @@ mod tests {
     fn test_parse_cons_body() {
         assert_eq!(
             parse_cons_body(&mut state_from("> a")),
-            Ok(Template(vec![TemplateBit::raw("a")])) );
+            Ok(Template(vec![TemplateBit::Indent(0), TemplateBit::raw("a")])) );
 
         assert_eq!(
             parse_cons_body(&mut state_from("> {x}\n> {y}")),
-            Ok(Template(vec![TemplateBit::key(0, "x")
-                                , TemplateBit::raw("\n")
-                                , TemplateBit::key(0, "y")])) );
+            Ok(Template(vec![
+                TemplateBit::Indent(0), TemplateBit::key("x"),
+                TemplateBit::Indent(0), TemplateBit::key("y")])) );
 
         assert_eq!(
             parse_cons_body(&mut state_from("> {x}\n> {y}\n> {z}")),
-            Ok(Template(vec![TemplateBit::key(0, "x")
-                                , TemplateBit::raw("\n")
-                                , TemplateBit::key(0, "y")
-                                , TemplateBit::raw("\n")
-                                , TemplateBit::key(0, "z")])) );
+            Ok(Template(vec![
+                TemplateBit::Indent(0), TemplateBit::key("x"),
+                TemplateBit::Indent(0), TemplateBit::key("y"),
+                TemplateBit::Indent(0), TemplateBit::key("z")])) );
     }
 
     #[test]
@@ -924,15 +928,14 @@ mod tests {
         assert_eq!(
             parse_cons_definition(&mut state_from(input)),
             Ok((String::from("abcd"), vec![],
-                Template(vec![TemplateBit::raw("a")]))) );
+                Template(vec![TemplateBit::Indent(0), TemplateBit::raw("a")]))) );
 
         let input = "f x y\n> {x}\n> {y}";
         assert_eq!(
             parse_cons_definition(&mut state_from(input)),
             Ok((String::from("f"), vec![String::from("x"), String::from("y")],
-                Template(vec![TemplateBit::key(0, "x")
-                                 , TemplateBit::raw("\n")
-                                 , TemplateBit::key(0, "y")]))) );
+                Template(vec![TemplateBit::Indent(0), TemplateBit::key("x"),
+                              TemplateBit::Indent(0), TemplateBit::key("y")]))) );
     }
 
     #[test]
@@ -945,10 +948,8 @@ mod tests {
             parse_cons(&mut state_from(input)),
             Ok((String::from("f"), t_fun(t_var_0("a"), t_fun(t_var_0("b"), t_var_0("c"))),
                     vec!["x".to_string(), "y".to_string()],
-                    Template(vec![TemplateBit::key(0, "x")
-                                     , TemplateBit::raw("\n")
-                                     , TemplateBit::key(0, "y")
-                                     , TemplateBit::raw("\n")])))
+                    Template(vec![TemplateBit::Indent(0), TemplateBit::key("x"),
+                                  TemplateBit::Indent(0), TemplateBit::key("y")])))
         );
     }
 
@@ -966,12 +967,11 @@ mod tests {
             parse_constructors(&mut state_from(input)),
             Ok([(String::from("abcd"), t_con("A"),
                     vec![],
-                    Template(vec![TemplateBit::raw("a\n")])),
+                    Template(vec![TemplateBit::Indent(0), TemplateBit::raw("a")])),
                 (String::from("f"),  t_fun(t_var_0("a"), t_fun(t_var_0("b"), t_var_0("c"))),
                     vec!["x".to_string(), "y".to_string()],
-                    Template(vec![TemplateBit::key(0, "x")
-                                     , TemplateBit::raw("\n")
-                                     , TemplateBit::key(0, "y")]))
+                    Template(vec![TemplateBit::Indent(0), TemplateBit::key("x"),
+                                  TemplateBit::Indent(0), TemplateBit::key("y")]))
                ].iter().cloned().collect())
             );
     }

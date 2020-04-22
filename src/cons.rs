@@ -251,10 +251,11 @@ fn using(x: Cons, t: &Type) -> (Cons, Type) {
     (c, res_type)
 }
 
-pub fn cat_cons(xs: Vec<(String, Cons, Type)>) -> Vec<(String, Cons, Type)> {
-    xs.iter().map(
-        |(n, c, t)| match using(c.clone(), t) { (c_, t_) => (String::from(n), c_, t_)})
-    .collect()
+pub fn cat_cons(xs: Vec<(String, Cons, Type, Vec<String>)>) -> Vec<(String, Cons, Type, Vec<String>)> {
+    xs.into_iter().map( |(n, c, t, args)|
+        match using(c, &t) {
+            (c_, t_) => (String::from(n), c_, t_, args)
+    }).collect()
 }
 
 // Performs the actions triggered by special constructors
@@ -413,11 +414,11 @@ pub fn script_template(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>
 }
 
 //Returns a list of types for which no constructor was found
-pub fn list_no_cons<'a>(cons: &'a[(String, Cons, Type)]) -> Vec<(&'a String, &'a Type)> {
+pub fn list_no_cons<'a>(cons: &'a[(String, Cons, Type, Vec<String>)]) -> Vec<(&'a String, &'a Type)> {
     let mut input_types = HashSet::new();
     let mut output_types = HashSet::new();
 
-    for (n, _, t) in cons {
+    for (n, _, t, _) in cons {
         let (args, out) = t.split();
         output_types.insert(out);
         for a in args.into_iter() {

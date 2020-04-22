@@ -19,15 +19,17 @@ use crate::type_sy::{t_fun};
 pub struct Morphism {
   pub name: String,
   pub cons: Cons,
+  pub cons_arg_names: Vec<String>,
   pub source: Type,
   pub target: Type,
 }
 
 impl Morphism {
-    pub fn new(name: &str, cons: Cons, source: Type, target: Type) -> Morphism {
+    pub fn new(name: &str, cons: Cons, source: Type, target: Type, cons_arg_names: Vec<String>) -> Morphism {
         Morphism {
             name : String::from(name),
             cons : cons,
+            cons_arg_names: cons_arg_names,
             source : source,
             target : target,
         }
@@ -43,7 +45,7 @@ impl Morphism {
         let i = fresh_inst(&q, &mut vn);
         mgu(&self.target, &i.fun_source().unwrap()).map(|u| {
             Morphism::new(
-                &(m.name.to_owned() + "." + &self.name),
+                &(self.name.to_owned() + ", " + &m.name),
                 Cons::Pair(
                     Box::new(Cons::Pair(
                         Box::new(Cons::Comp),
@@ -51,6 +53,14 @@ impl Morphism {
                     Box::new(self.cons.clone())),
                 self.source.apply_substitution(&u),
                 i.fun_target().unwrap().apply_substitution(&u),
+                m.cons_arg_names.iter().cloned().map(|a|
+                    //format!("argument \x1B[32;1m{}\x1B[0m of constructor \x1B[33;1m{}\x1B[0m used to construct a value for:\n\t{}",
+                    //       a, m.name, self.cons_arg_names[0])
+                    format!("{} constructed with\n\t\x1B[33;1m{}\x1B[0m which requires an argument \x1B[32;1m{}\x1B[0m",
+                           self.cons_arg_names[0], m.name, a)
+                )
+                .chain(self.cons_arg_names[1..].iter().cloned())
+                .collect(),
             )
         })
     }
@@ -212,27 +222,30 @@ impl Iterator for MorphismsDF {
 pub struct MorphScheme {
   name: String,
   cons: Cons,
+  cons_arg_names: Vec<String>,
   scheme: Scheme,
 }
 
 impl MorphScheme {
-    fn new(name: &str, cons: Cons, source: Type, target: Type) -> MorphScheme {
+    fn new(name: &str, cons: Cons, source: Type, target: Type, cons_arg_names: Vec<String>) -> MorphScheme {
         let f = t_fun(source, target);
         MorphScheme {
             name : String::from(name),
             cons : cons,
+            cons_arg_names: cons_arg_names,
             scheme : quantify(None,&f),
         }
     }
 
     // Return None if t is not a function type (TAp)
-    fn from_type(name: &str, cons: Cons, t: &Type) -> Option<MorphScheme> {
+    fn from_type(name: &str, cons: Cons, t: &Type, cons_arg_names: Vec<String>) -> Option<MorphScheme> {
         match t {
              Type::TAp(_, _) => {
                  let s : Scheme = quantify(None, &t);
                  Some(MorphScheme {
                          name: String::from(name),
                          cons: cons,
+                         cons_arg_names: cons_arg_names,
                          scheme: s,
                  })
              },
@@ -272,7 +285,7 @@ impl MorphScheme {
         let mi = fresh_inst(&m.scheme, &mut vn);
         mgu(&si.fun_target().unwrap(), &mi.fun_source().unwrap()).map(|u| {
             MorphScheme::new(
-                &(m.name.to_owned()  + "." + &self.name),
+                &(self.name.to_owned() + "." + &m.name),
                 Cons::Pair(
                     Box::new(Cons::Pair(
                         Box::new(Cons::Comp),
@@ -280,11 +293,16 @@ impl MorphScheme {
                     Box::new(self.cons.clone())),
                 si.fun_source().unwrap().apply_substitution(&u),
                 mi.fun_target().unwrap().apply_substitution(&u),
+                m.cons_arg_names.iter().cloned().map(|a|
+                        format!("{} of {} for {}", a, m.name, self.cons_arg_names[0])
+                    )
+                    .chain(self.cons_arg_names[1..].iter().cloned())
+                    .collect(),
             )
         })
     }
 
-    // Return the morphism that resuls from applying arg to the function represented
+    // Return the morphism that results from applying arg to the function represented
     // by self. Creates a fresh instance i of self avoiding any type variable name clash
     // with the argument by excluding from the new variable name any name that appears in arg,
     // then computes s = (mgu i.fun_source() arg) and applies it to both i.fun_source() and i.fun_target().
@@ -292,13 +310,14 @@ impl MorphScheme {
     fn inst_ap(&self, arg: &Type) -> Result<Morphism, String> {
         let mut vn = VarNames::excluding(var_names(arg).into_iter());
         let i = fresh_inst(&self.scheme, &mut vn);
-        let i_source = i.fun_source().ok_or(String::from("Not a function"))?;
+        let (i_source, i_target) = i.fun_split().ok_or(String::from("Not a function"))?;
         mgu(&i_source, arg).map(|u| {
             Morphism::new(
                 &self.name,
                 self.cons.clone(),
                 i_source.apply_substitution(&u),
-                i.fun_target().unwrap().apply_substitution(&u),
+                i_target.apply_substitution(&u),
+                self.cons_arg_names.clone(),
             )
         })
     }
@@ -309,6 +328,7 @@ impl Types for MorphScheme {
        MorphScheme {
            name: self.name.clone(),
            cons: self.cons.clone(),
+           cons_arg_names: self.cons_arg_names.clone(),
            scheme: self.scheme.apply_substitution(substitution),
        }
     }
@@ -321,14 +341,14 @@ impl Types for MorphScheme {
 impl fmt::Display for MorphScheme {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      MorphScheme{name, cons, scheme} => write!(f, "{}: {} = {} ", name, scheme, cons),
+      MorphScheme{name, cons, cons_arg_names, scheme} => write!(f, "{} {:?}>: {} = {} ", name, cons_arg_names, scheme, cons),
     }
   }
 }
 
-pub fn morph_schemes_from_cons(cons: &Vec<(String, Cons, Type)>) -> Vec<MorphScheme> {
+pub fn morph_schemes_from_cons(cons: &Vec<(String, Cons, Type, Vec<String>)>) -> Vec<MorphScheme> {
     cons.iter()
-    .map(|(n, c, t)| MorphScheme::from_type(n, c.clone(), t).expect(&format!("Cannot make MorphScheme from {}", t)))
+    .map(|(n, c, t, a)| MorphScheme::from_type(n, c.clone(), t, a.clone()).expect(&format!("Cannot make MorphScheme from {}", t)))
     .collect()
 }
 
@@ -468,12 +488,12 @@ mod tests {
         let x = Morphism::new("x", Data(0), t_var_0("a"), t_var_0("b"));
         let y = Morphism::new("y", Data(1), t_var_0("b"), t_var_0("c"));
         let result = x.and_then(&y);
-        let expect = Ok(Morphism::new("y.x",
+        let expect = Ok(Morphism::new("x, y",
             pair(pair(Comp, Data(1)), Data(0)),
             t_var_0("a"), t_var_0("d")));
         assert_eq!(result, expect);
 
-        let expect = Ok(Morphism::new("x.y",
+        let expect = Ok(Morphism::new("y, x",
             pair(pair(Comp, Data(0)), Data(1)),
             t_var_0("b"), t_var_0("d")));
         assert_eq!(y.and_then(&x), expect);
@@ -481,7 +501,7 @@ mod tests {
         let x = Morphism::new("x", Data(0), t_nat(), t_int());
         let y = Morphism::new("y", Data(1), t_int(), t_double());
         let result = x.and_then(&y);
-        let expect = Ok(Morphism::new("y.x",
+        let expect = Ok(Morphism::new("x, y",
             pair(pair(Comp, Data(1)), Data(0)),
             t_nat(), t_double()));
         assert_eq!(result, expect);

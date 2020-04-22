@@ -1,26 +1,26 @@
 calibrate: PosteriorDistribution x y -> SCRIPT
-calibrate x
-> {x}
+calibrate calibration_method
+> {calibration_method}
 
 profile: Profile -> SCRIPT
-profile x
-> {x}
+profile profile_method
+> {profile_method}
 
 diversity: Diversity Double -> SCRIPT
-diversity x
-> {x}
+diversity diversity_method
+> {diversity_method}
 
 seed: Seed
 seed 
 > seed
 
 var_int: Text -> Var Int
-var_int name
-> {name}
+var_int var_name
+> {var_name}
 
 var_double: Text -> Var Double
-var_double name
-> {name}
+var_double var_name
+> {var_name}
 
 inputs: InputList a -> Input b
 inputs list
@@ -28,14 +28,18 @@ inputs list
 >    {list}
 > )
 
+single_input: Var a -> InputList a
+single_input var 
+> {var} 
+
 add_input: Var a -> InputList b -> InputList (Pair a b)
 add_input var list
 > {var},
 > {list}
 
-single_input: Var a -> InputList a
-single_input var 
-> {var} 
+no_more_input: InputList a -> InputList a
+no_more_input list
+> {list} 
 
 mapped_inputs: MappedInputList a -> MappedInput b
 mapped_inputs list
@@ -43,14 +47,18 @@ mapped_inputs list
 >    {list}
 > )
 
+single_mapped_input: Var a -> Text -> MappedInputList a
+single_mapped_input var mapped_name
+> {var} mapped "{mapped_name}" 
+
 add_mapped_input: Var a -> Text -> MappedInputList b -> MappedInputList (Pair a b)
 add_mapped_input var mapped_name list 
 > {var} mapped "{mapped_name}",
 > {list}
 
-single_mapped_input: Var a -> Text -> MappedInputList a
-single_mapped_input var mapped_name
-> {var} mapped "{mapped_name}" 
+no_more_mapped_input: MappedInputList a -> MappedInputList a
+no_more_mapped_input list
+> {list}
 
 mapped_outputs: MappedOutputList a -> MappedOutput b
 mapped_outputs list
@@ -58,14 +66,18 @@ mapped_outputs list
 >    {list}
 > )
 
+single_mapped_output: Var a -> Text -> MappedOutputList a
+single_mapped_output var mapped_name
+> {var} mapped "{mapped_name}" 
+
 add_mapped_output: Var a -> Text -> MappedOutputList b -> MappedOutputList (Pair a b)
 add_mapped_output var mapped_name list
 > {var} mapped "{mapped_name}",
 > {list}
 
-single_mapped_output: Var a -> Text -> MappedOutputList a
-single_mapped_output var mapped_name
-> {var} mapped "{mapped_name}" 
+no_more_mapped_output: MappedOutputList a -> MappedOutputList a
+no_more_mapped_output list
+> {list}
 
 outputs: OutputList a -> Output b
 outputs list
@@ -73,14 +85,18 @@ outputs list
 >    {list}
 > )
 
+single_output: Var a -> OutputList a
+single_output var 
+> {var} 
+
 add_output: Var a -> OutputList b -> OutputList (Pair a b)
 add_output var list
 > {var},
 > {list}
 
-single_output: Var a -> OutputList a
-single_output var 
-> {var} 
+no_more_output: OutputList a -> OutputList a
+no_more_output list
+> {list}
 
 scala_model: Text -> Input x -> Output y -> Model x y
 scala_model source inputs outputs
@@ -167,14 +183,18 @@ grid list
 >   {list}
 > )
 
-add_grid: Var a -> a -> a -> a -> GridList b -> GridList (Pair a b)
-add_grid var min max by list
+single_grid_dimension: Var a -> a -> a -> a -> GridList a
+single_grid_dimension var min max by
+> {var} in ({min} to {max} by {by})
+
+add_grid_dimension: Var a -> a -> a -> a -> GridList b -> GridList (Pair a b)
+add_grid_dimension var min max by list
 > {var} in ({min} to {max} by {by}),
 > {list}
 
-single_grid: Var a -> a -> a -> a -> GridList a
-single_grid var min max by
-> {var} in ({min} to {max} by {by})
+no_more_grid_dimension: GridList a -> GridList a
+no_more_grid_dimension grid
+> {grid}
 
 bounds: BoundsList x -> Bounds x
 bounds list
@@ -182,14 +202,18 @@ bounds list
 >   {list}
 > )
 
-add_bound: Var a -> a -> a -> BoundsList b -> BoundsList (Pair a b)
-add_bound var min max list
+single_bound_dimension: Var a -> a -> a -> BoundsList a
+single_bound_dimension var min max
+> {var} in ({min}, {max})
+
+add_bound_dimension: Var a -> a -> a -> BoundsList b -> BoundsList (Pair a b)
+add_bound_dimension var min max list
 > {var} in ({min}, {max}),
 > {list}
 
-single_bound: Var a -> a -> a -> BoundsList a
-single_bound var min max
-> {var} in ({min}, {max})
+no_more_bound_dimensions: BoundsList a -> BoundsList a
+no_more_bound_dimensions bounds
+> {bounds}
 
 abc: Model x y -> Prior x -> Observed y -> Int -> Int -> Double -> Int -> Int -> PosteriorDistribution x y
 abc model prior data sample_size generated p_acc_min stop_sam_size par
@@ -213,14 +237,18 @@ observed list
 >   {list}
 > )
 
-add_observed: Var a -> a -> ObservedList b -> ObservedList (Pair a b)
-add_observed var value obs_b
+single_observed_dimension: Var a -> a -> ObservedList a
+single_observed_dimension var value
+> {var} -> {value}
+
+add_observed_dimension: Var a -> a -> ObservedList b -> ObservedList (Pair a b)
+add_observed_dimension var value obs_b
 > {var} -> {value},
 > {obs_b}
 
-single_observed: Var a -> a -> ObservedList a
-single_observed var value
-> {var} -> {value}
+no_more_observed_dimension: ObservedList a -> ObservedList a
+no_more_observed_dimension list
+> {list}
 
 independant_priors: IndependentPriorsList a -> Prior a
 independant_priors x

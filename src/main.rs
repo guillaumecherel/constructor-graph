@@ -9,6 +9,7 @@ mod type_sy;
 use std::fs;
 use std::collections::HashSet;
 use std::io;
+use std::io::Write;
 use std::iter::Iterator;
 use std::vec;
 use structopt::StructOpt;
@@ -57,9 +58,11 @@ fn main() {
         }
         Ok(x) => x,
     };
-    let all_cons_sig: Vec<(String, Cons, Type)> =
-        input_cons.iter().map(|(nam,cons,typ,_,_)| (nam.clone(), cons.clone(), typ.clone()))
-        .chain(predef_cons.iter().map(|(nam,cons,typ,_)| (nam.clone(), cons.clone(), typ.clone())))
+    let all_cons_sig: Vec<(String, Cons, Type, Vec<String>)> =
+        input_cons.iter().map(|(nam,cons,typ,args,_)|
+             (nam.clone(), cons.clone(), typ.clone(), args.clone()))
+        .chain(predef_cons.iter().map(|(nam,cons,typ,args)|
+             (nam.clone(), cons.clone(), typ.clone(), args.clone())))
         .collect();
     // let script = |c: &Cons| -> String {
     //     cons::script_cons(
@@ -161,30 +164,41 @@ where F: Fn(&Cons) -> Result<String, String>,
 {
     let stop_type = t_con("SCRIPT");
     let mut cur_type = start_type();
-    let mut cur_morphism = Morphism::new("id", Id, t_var_0("a"), t_var_0("a"));
+    let mut cur_morphism = Morphism::new("id", Id, t_var_0("a"), t_var_0("a"), vec!["The script is".to_string()]);
     let mut input = String::new();
-    let mut selection: usize;
 
     while cur_type != stop_type {
         println!("");
-        println!("Current morphism: {}", cur_morphism.name);
-        println!("Chain with:");
+
+        match cur_morphism.target.fun_source() {
+            None =>
+                println!("What kind of simulation experiment to you want to perform?"),
+            Some(arg) =>
+                println!("{}.",
+                    cur_morphism.cons_arg_names.first().unwrap_or(&"???".to_string())),
+        };
 
         let candidates = morphisms_from_source(&cur_type, morph_schemes);
 
-        selection =
+        let mut selected_morphism: Morphism =
             if candidates.len() < 1 {
                 panic!("No candidate morphism.");
             } else if candidates.len() == 1 {
-                0
+                let s = candidates.first().unwrap().clone();
+                println!("There is only one constructor compatible: \x1B[33;1m{}\x1B[0m", s.name);
+                print!("Selecting it automatically. Press Enter to continue...");
+                io::stdout().flush().unwrap();
+                io::stdin().read_line(&mut input).ok();
+                s
             } else {
-
+                println!("Please choose a constructor for this value:");
                 for (i, m) in (0..).zip(candidates.iter()) {
-                   println!("{}: {}", i, m.name);
+                   println!("    {}: \x1B[33;1m{}\x1B[0m", i, m.name);
                 }
 
                 loop {
                     print!("Select [0]> ");
+                    io::stdout().flush().unwrap();
                     input.clear();
                     match io::stdin().read_line(&mut input) {
                         Err(e) => {
@@ -197,20 +211,18 @@ where F: Fn(&Cons) -> Result<String, String>,
                     let trimmed = input.trim();
 
                     if trimmed.is_empty() {
-                        break 0
+                        break candidates.first().unwrap().clone()
                     } else {
                         match trimmed.parse::<usize>() {
                             Err(e) => {
                                 println!("Failed to parse input: {}", e);
                                 continue
                             }
-                            Ok(s) => break s,
+                            Ok(s) => break candidates.get(s).unwrap().clone(),
                         }
                     }
                 }
             };
-
-        let mut selected_morphism = candidates[selection].clone();
 
         selected_morphism.cons = run_special_cons(&selected_morphism.cons);
 

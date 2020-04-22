@@ -83,10 +83,9 @@ fn main() {
         let cons = cons::cat_cons(all_cons_sig.clone());
         let morph_schemes = morph_schemes_from_cons(&cons);
         match args.output_type {
-           None => output_info(&input_cons, &morph_schemes),
            Some(OutputType::Info) => output_info(&input_cons, &morph_schemes),
            Some(OutputType::GraphViz) => output_gv(&morph_schemes),
-           Some(OutputType::Interact) => interact(&morph_schemes, script),
+           None | Some(OutputType::Interact) => interact(&morph_schemes, script),
         }
     }
 }
@@ -173,9 +172,10 @@ where F: Fn(&Cons) -> Result<String, String>,
         match cur_morphism.target.fun_source() {
             None =>
                 println!("What kind of simulation experiment to you want to perform?"),
-            Some(arg) =>
-                println!("{}.",
-                    cur_morphism.cons_arg_names.first().unwrap_or(&"???".to_string())),
+            Some(_) => {
+                println!("{}.\nWe need to construct a value for the latter argument. Please choose a constructor:",
+                    cur_morphism.cons_arg_names.first().unwrap_or(&"???".to_string()));
+            }
         };
 
         let candidates = morphisms_from_source(&cur_type, morph_schemes);
@@ -191,7 +191,6 @@ where F: Fn(&Cons) -> Result<String, String>,
                 io::stdin().read_line(&mut input).ok();
                 s
             } else {
-                println!("Please choose a constructor for this value:");
                 for (i, m) in (0..).zip(candidates.iter()) {
                    println!("    {}: \x1B[33;1m{}\x1B[0m", i, m.name);
                 }

@@ -256,14 +256,18 @@ independant_priors x
 >   {x}
 > )
 
+single_independant_prior: UnivariatePrior a -> IndependentPriorsList a 
+single_independant_prior dist
+> {dist}
+
 add_independant_prior: UnivariatePrior a -> IndependentPriorsList b -> IndependentPriorsList (Pair a b)
 add_independant_prior new_dist list
 > {new_dist},
 > {list}
 
-single_independant_prior: UnivariatePrior a -> IndependentPriorsList a 
-single_independant_prior dist
-> {dist}
+no_more_independant_prior: IndependentPriorsList a -> IndependentPriorsList a
+no_more_independant_prior list
+> {list}
 
 uniform_prior: Var a -> a -> a -> UnivariatePrior a
 uniform_prior var low_bound up_bound

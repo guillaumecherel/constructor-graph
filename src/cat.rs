@@ -365,11 +365,13 @@ mod tests {
            "f",
            Id,
            t_var_0("a"),
-           t_var_0("a")
+           t_var_0("a"),
+           vec!["a".to_string()]
        );
        let expect = MorphScheme{
            name: String::from("f"),
            cons: Id,
+           cons_arg_names: vec!["a".to_string()],
            scheme: Scheme{
                kinds : vec![Kind::Star],
                t : t_fun(t_gen(0), t_gen(0)),
@@ -381,11 +383,13 @@ mod tests {
            "f",
            Data(0),
            t_fun(t_var_0("a"), t_var_0("b")),
-           t_var_0("b")
+           t_var_0("b"),
+           vec!["arg1".to_string()]
        );
        let expect = MorphScheme{
            name: String::from("f"),
            cons: Data(0),
+           cons_arg_names: vec!["arg1".to_string()],
            scheme: Scheme{
                kinds : vec![Kind::Star, Kind::Star],
                t : t_fun(t_fun(t_gen(0), t_gen(1)), t_gen(1)),
@@ -430,13 +434,15 @@ mod tests {
            "f",
            Data(0),
            t_var_0("a"),
-           t_var_0("a")
+           t_var_0("a"),
+            vec!["arg1".to_string()],
        );
        let source = t_var_0("b");
        let result = m.inst_ap(&source);
        let expect = Ok(Morphism{
            name: String::from("f"),
            cons: Data(0),
+           cons_arg_names: vec!["arg1".to_string()],
            source: t_var_0("b"),
            target: t_var_0("b")}
        );
@@ -447,7 +453,8 @@ mod tests {
            "f",
            Data(0),
            t_var_0("a"),
-           t_var_0("b")
+           t_var_0("b"),
+           vec!["arg1".to_string()],
        );
        let source = t_var_0("b");
        let result = m.inst_ap(&source);
@@ -456,6 +463,7 @@ mod tests {
        let expect = Ok(Morphism{
            name: String::from("f"),
            cons: Data(0),
+           cons_arg_names: vec!["arg1".to_string()],
            source: t_var_0("b"),
            target: t_var_0("c")}
        );
@@ -468,13 +476,15 @@ mod tests {
            t_fun(t_var_0("a"), t_var_0("b")),
            t_fun(
                t_fun(t_var_0("c"), t_var_0("a")),
-               t_fun(t_var_0("c"), t_var_0("b")))
+               t_fun(t_var_0("c"), t_var_0("b"))),
+           vec!["arg1".to_string()],
        );
        let source = t_fun(t_var_0("x"), t_var_0("y"));
        let result = m.inst_ap(&source);
        let expect = Ok(Morphism{
            name: String::from("f"),
            cons: Data(0),
+           cons_arg_names: vec!["arg1".to_string()],
            source: t_fun(t_var_0("x"), t_var_0("y")),
            target: t_fun(
                t_fun(t_var_0("c"), t_var_0("x")),
@@ -485,26 +495,27 @@ mod tests {
 
     #[test]
     fn test_morphism_and_then() {
-        let x = Morphism::new("x", Data(0), t_var_0("a"), t_var_0("b"));
-        let y = Morphism::new("y", Data(1), t_var_0("b"), t_var_0("c"));
+        let x = Morphism::new("x", Data(0), t_var_0("a"), t_var_0("b"), vec!["arga".to_string()]);
+        let y = Morphism::new("y", Data(1), t_var_0("b"), t_var_0("c"), vec!["argb".to_string()]);
         let result = x.and_then(&y);
-        let expect = Ok(Morphism::new("x, y",
-            pair(pair(Comp, Data(1)), Data(0)),
-            t_var_0("a"), t_var_0("d")));
-        assert_eq!(result, expect);
+        assert_eq!(result.as_ref().unwrap().name, "x, y");
+        assert_eq!(result.as_ref().unwrap().cons, pair(pair(Comp, Data(1)), Data(0)));
+        assert_eq!(result.as_ref().unwrap().source, t_var_0("a"));
+        assert_eq!(result.as_ref().unwrap().target, t_var_0("d"));
 
-        let expect = Ok(Morphism::new("y, x",
-            pair(pair(Comp, Data(0)), Data(1)),
-            t_var_0("b"), t_var_0("d")));
-        assert_eq!(y.and_then(&x), expect);
+        let result = y.and_then(&x);
+        assert_eq!(result.as_ref().unwrap().name, "y, x");
+        assert_eq!(result.as_ref().unwrap().cons, pair(pair(Comp, Data(0)), Data(1)));
+        assert_eq!(result.as_ref().unwrap().source, t_var_0("b"));
+        assert_eq!(result.as_ref().unwrap().target, t_var_0("d"));
 
-        let x = Morphism::new("x", Data(0), t_nat(), t_int());
-        let y = Morphism::new("y", Data(1), t_int(), t_double());
+        let x = Morphism::new("x", Data(0), t_nat(), t_int(), vec!["arg1".to_string()]);
+        let y = Morphism::new("y", Data(1), t_int(), t_double(), vec!["arg1".to_string()]);
         let result = x.and_then(&y);
-        let expect = Ok(Morphism::new("x, y",
-            pair(pair(Comp, Data(1)), Data(0)),
-            t_nat(), t_double()));
-        assert_eq!(result, expect);
+        assert_eq!(result.as_ref().unwrap().name, "x, y");
+        assert_eq!(result.as_ref().unwrap().cons, pair(pair(Comp, Data(1)), Data(0)));
+        assert_eq!(result.as_ref().unwrap().source, t_nat());
+        assert_eq!(result.as_ref().unwrap().target, t_double());
 
         let result = y.and_then(&x);
         assert!(result.is_err(), "{:?}", result);

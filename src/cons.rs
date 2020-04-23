@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::fmt;
 use std::io;
 use std::io::Write;
@@ -293,39 +291,6 @@ pub fn uncat_cons(cons: &Cons) -> Cons {
                          Box::new(uncat_cons(d)),
                          Box::new(uncat_cons(e)))))))
         })
-    // // match Pair(Pair(Comp, Pair(Ap, x)), f)
-    // .or_else(
-    //     || run_pair(cons,
-    //         |l| run_pair(l,
-    //             run_comp,
-    //             |lr| run_pair(lr, run_ap, run_any, |_, x| x),
-    //             |_, x| x),
-    //         run_any,
-    //         |x, f| {
-    //             // println!("Reducing Comp Ap x f {}", cons);
-    //             uncat_cons(&pair(uncat_cons(f), uncat_cons(x)))
-    //         })
-    // )
-    // match Pair(Pair(Comp, Id), d)
-    // .or_else(
-    //     || run_pair(cons,
-    //         |l| run_pair(l, run_comp, run_id, |_, _| ()),
-    //         run_any,
-    //         |_, d| {
-    //             // println!("Reducing Comp Id x {}", cons);
-    //             uncat_cons(d)
-    //         })
-    // )
-    // // match Pair(Pair(Comp, d), Id)
-    // .or_else(
-    //     || run_pair(cons,
-    //         |l| run_pair(l, run_comp, run_any, |_, d| d),
-    //         run_id,
-    //         |d, _| {
-    //             // println!("Reducing Comp x Id {}", cons);
-    //             uncat_cons(d)
-    //         })
-    // )
     // match Pair(Pair(Ap, d), e)
     .or_else(
         || run_pair(cons,
@@ -344,14 +309,6 @@ pub fn uncat_cons(cons: &Cons) -> Cons {
                 uncat_cons(x)
             })
     )
-    // // match Pair(Comp, Id)
-    // .or_else(
-    //     || run_pair(cons, run_comp, run_id,
-    //         |_, _| {
-    //             // println!("Reducing Comp Id {}", cons);
-    //             Id
-    //         })
-    // )
     // match Pair(f, g)
     .or_else(
         || run_pair(cons, run_any, run_any,
@@ -380,7 +337,6 @@ pub fn script_cons(c: &Cons, cons_def: &Vec<(String, Cons, Type)>) -> String {
 }
 
 pub fn script_template(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, Template)>) -> Result<String, String> {
-
     pub fn go(c: &Cons, cons_def: &Vec<(String, Cons, Type, Vec<String>, Template)>) -> (Vec<String>, Template) {
         // match Pair(f, x)
         run_pair(c, run_any, run_any,

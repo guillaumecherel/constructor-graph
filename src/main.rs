@@ -2,7 +2,6 @@ mod cat;
 mod parse;
 mod template;
 mod cons;
-mod openmole;
 mod util;
 mod type_sy;
 
@@ -47,8 +46,6 @@ impl Default for OutputType {
 
 fn main() {
     let args = Cli::from_args();
-    //let input_cons = cons::cons_test();
-    //let input_cons = openmole::cons();
     let predef_cons = cons::predef_cons();
     let input_cons = match cons_from_file("openmole.cons") {
         Err(parse_err) => {
@@ -64,12 +61,6 @@ fn main() {
         .chain(predef_cons.iter().map(|(nam,cons,typ,args)|
              (nam.clone(), cons.clone(), typ.clone(), args.clone())))
         .collect();
-    // let script = |c: &Cons| -> String {
-    //     cons::script_cons(
-    //         c,
-    //         &input_cons.iter().map(|(nam,cons,typ,_,_)| (nam.clone(), cons.clone(), typ.clone())).collect()
-    //     )
-    // };
     let script = |c: &Cons| -> Result<String, String> { cons::script_template( c, &input_cons ) };
 
     // Types that have no constructors:

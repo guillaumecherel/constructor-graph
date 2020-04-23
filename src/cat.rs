@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::iter::Iterator;
@@ -155,63 +153,6 @@ impl Iterator for MorphismsDF {
     }
 }
 
-// // Iterator listing paths starting from the given sources and exploring the
-// // induced graph in a breadth first way.
-// pub fn morphisms_paths(sources: &Vec<&Type>, mss: &Vec<MorphScheme>, end_node: Type) -> Paths {
-//     let q = sources.iter().cloned().collect();
-//     Paths {
-//         queue: q,
-//         visited: HashMap::new(),
-//         morph_schemes: mss.clone(),
-//         end_node: end_node,
-//     }
-// }
-// 
-// pub struct Paths {
-//     pub queue: VecDeque<Type>,
-//     pub visited: HashMap<Type, Vec<Morphism>>,
-//     pub morph_schemes: Vec<MorphScheme>,
-//     pub end_node: Type,
-// }
-// 
-// impl Paths {
-//     pub reconstruct_paths() -> Vec<Vec<Morphism>>{
-//         
-//     }
-// }
-// 
-// impl Iterator for Paths {
-//     type Item = Vec<Morphism>;
-// 
-//     fn next(&mut self) -> Option<Self::Item> {
-//         loop {
-//             let cur_op = self.queue.pop_front();
-//             if cur_op.is_none() {
-//                 break None;
-//             } else {
-//                 let cur = cur_op.unwrap();
-//                 if cur == self.end_node {
-//                     break Some(cur);
-//                 } else {
-//                     let next =
-//                         morphisms_from_source(&last.target, &self.morph_schemes)
-//                         .into_iter()
-//                         .map(|n| {
-//                             let mut n1 = cur.clone();
-//                             n1.push(n.clone());
-//                             n1
-//                             });
-//                         // .filter(|n| !self.visited.contains(n))
-//                     for n in next.into_iter() {
-//                         self.queue.push_back(n);
-//                         // self.visited.insert(n);
-//                     }
-//                     continue;
-//                 }
-//             }
-//         }
-//     }
-// }
 
 //// MorphSchemes: Type machinery to instantiate morphisms from a given source type.
 
@@ -227,16 +168,6 @@ pub struct MorphScheme {
 }
 
 impl MorphScheme {
-    fn new(name: &str, cons: Cons, source: Type, target: Type, cons_arg_names: Vec<String>) -> MorphScheme {
-        let f = t_fun(source, target);
-        MorphScheme {
-            name : String::from(name),
-            cons : cons,
-            cons_arg_names: cons_arg_names,
-            scheme : quantify(None,&f),
-        }
-    }
-
     // Return None if t is not a function type (TAp)
     fn from_type(name: &str, cons: Cons, t: &Type, cons_arg_names: Vec<String>) -> Option<MorphScheme> {
         match t {
@@ -251,55 +182,6 @@ impl MorphScheme {
              },
              _ => None,
        }
-    }
-
-    fn source(&self) -> Scheme {
-       match &self.scheme.t {
-           Type::TAp(s, _) =>
-               Scheme{
-                   kinds: self.scheme.kinds.clone(),
-                   t: *s.clone()
-               },
-           _ => panic!("MorphSchemes underlying Scheme should be a function type TAp."),
-       }
-    }
-
-    fn target(&self) -> Scheme {
-       match &self.scheme.t {
-           Type::TAp(_, t) =>
-               Scheme{
-                   kinds: self.scheme.kinds.clone(),
-                   t: *t.clone()
-               },
-           _ => panic!("MorphSchemes underlying Scheme should be a function type TAp.")
-       }
-    }
-
-    // Forward composition: given self: X -> Y and m: Y -> Z, self.compose(m) : X -> Z.
-    fn and_then(&self, m: &MorphScheme) -> Result<MorphScheme, String> {
-        let mut vn = VarNames::excluding(
-            var_names(&self.scheme).into_iter()
-            .chain(var_names(&m.scheme).into_iter())
-         );
-        let si = fresh_inst(&self.scheme, &mut vn);
-        let mi = fresh_inst(&m.scheme, &mut vn);
-        mgu(&si.fun_target().unwrap(), &mi.fun_source().unwrap()).map(|u| {
-            MorphScheme::new(
-                &(self.name.to_owned() + "." + &m.name),
-                Cons::Pair(
-                    Box::new(Cons::Pair(
-                        Box::new(Cons::Comp),
-                        Box::new(m.cons.clone()))),
-                    Box::new(self.cons.clone())),
-                si.fun_source().unwrap().apply_substitution(&u),
-                mi.fun_target().unwrap().apply_substitution(&u),
-                m.cons_arg_names.iter().cloned().map(|a|
-                        format!("{} of {} for {}", a, m.name, self.cons_arg_names[0])
-                    )
-                    .chain(self.cons_arg_names[1..].iter().cloned())
-                    .collect(),
-            )
-        })
     }
 
     // Return the morphism that results from applying arg to the function represented
@@ -355,88 +237,20 @@ pub fn morph_schemes_from_cons(cons: &Vec<(String, Cons, Type, Vec<String>)>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::type_sy::{Kind, t_var_0, t_gen, t_nat, t_int, t_double};
-    use crate::cons::Cons::{Id, Data, Comp};
+    use crate::type_sy::{t_var_0, t_nat, t_int, t_double};
+    use crate::cons::Cons::{Data, Comp};
     use crate::cons::{pair};
-
-    #[test]
-    fn test_morph_scheme_new() {
-       let m = MorphScheme::new(
-           "f",
-           Id,
-           t_var_0("a"),
-           t_var_0("a"),
-           vec!["a".to_string()]
-       );
-       let expect = MorphScheme{
-           name: String::from("f"),
-           cons: Id,
-           cons_arg_names: vec!["a".to_string()],
-           scheme: Scheme{
-               kinds : vec![Kind::Star],
-               t : t_fun(t_gen(0), t_gen(0)),
-           },
-       };
-       assert_eq!(m, expect);
-
-       let m = MorphScheme::new(
-           "f",
-           Data(0),
-           t_fun(t_var_0("a"), t_var_0("b")),
-           t_var_0("b"),
-           vec!["arg1".to_string()]
-       );
-       let expect = MorphScheme{
-           name: String::from("f"),
-           cons: Data(0),
-           cons_arg_names: vec!["arg1".to_string()],
-           scheme: Scheme{
-               kinds : vec![Kind::Star, Kind::Star],
-               t : t_fun(t_fun(t_gen(0), t_gen(1)), t_gen(1)),
-           },
-       };
-       assert_eq!(m, expect);
-    }
-
-    // #[test]
-    // fn test_morph_scheme_and_then() {
-    //     let x = MorphScheme::new("x", Data(0), t_var_0("a"), t_var_0("b"));
-    //     let y = MorphScheme::new("y", Data(1), t_var_0("b"), t_var_0("c"));
-    //     let result = x.and_then(&y).unwrap();
-    //     let expect = MorphScheme::new("y.x",
-    //         pair(pair(Comp, Data(1)), Data(0)),
-    //         t_var_0("a"),
-    //         t_var_0("c"));
-    //     assert_eq!(result, expect);
-
-    //     let expect = Ok(MorphScheme::new("x.y",
-    //         pair(Data(1), Data(0)),
-    //         t_var_0("b"), t_var_0("d")));
-    //     assert_eq!(y.and_then(&x), expect);
-
-    //     let x = MorphScheme::new("x", Data(0), t_nat(), t_int());
-    //     let y = MorphScheme::new("y", Data(1), t_int(), t_double());
-    //     let result = x.and_then(&y);
-    //     let expect = Ok(MorphScheme::new("y.x",
-    //         pair(Data(0), Data(1)),
-    //         t_nat(), t_double()));
-    //     assert_eq!(result, expect);
-
-    //     let result = y.and_then(&x);
-    //     assert!(result.is_err(), "{:?}", result);
-    // }
 
     #[test]
     fn test_morphism_from_scheme() {
 
        // f: a -> a; x: b
-       let m = MorphScheme::new(
+       let m = MorphScheme::from_type(
            "f",
            Data(0),
-           t_var_0("a"),
-           t_var_0("a"),
-            vec!["arg1".to_string()],
-       );
+           &t_fun(t_var_0("a"), t_var_0("a")),
+           vec!["arg1".to_string()],
+       ).unwrap();
        let source = t_var_0("b");
        let result = m.inst_ap(&source);
        let expect = Ok(Morphism{
@@ -449,13 +263,12 @@ mod tests {
        assert_eq!(result, expect);
 
        // f: a -> b; x: b
-       let m = MorphScheme::new(
+       let m = MorphScheme::from_type(
            "f",
            Data(0),
-           t_var_0("a"),
-           t_var_0("b"),
+           &t_fun(t_var_0("a"), t_var_0("b")),
            vec!["arg1".to_string()],
-       );
+       ).unwrap();
        let source = t_var_0("b");
        let result = m.inst_ap(&source);
 
@@ -470,15 +283,16 @@ mod tests {
        assert_eq!(result, expect);
 
        // f: (a -> b) -> ( (c -> a) -> (c -> b)); x: x -> y
-       let m = MorphScheme::new(
+       let m = MorphScheme::from_type(
            "f",
            Data(0),
-           t_fun(t_var_0("a"), t_var_0("b")),
-           t_fun(
-               t_fun(t_var_0("c"), t_var_0("a")),
-               t_fun(t_var_0("c"), t_var_0("b"))),
+           &t_fun(
+               t_fun(t_var_0("a"), t_var_0("b")),
+               t_fun(
+                   t_fun(t_var_0("c"), t_var_0("a")),
+                   t_fun(t_var_0("c"), t_var_0("b")))),
            vec!["arg1".to_string()],
-       );
+       ).unwrap();
        let source = t_fun(t_var_0("x"), t_var_0("y"));
        let result = m.inst_ap(&source);
        let expect = Ok(Morphism{
@@ -520,134 +334,5 @@ mod tests {
         let result = y.and_then(&x);
         assert!(result.is_err(), "{:?}", result);
     }
-
-    // use crate::util::vec_to_string;
-
-    // #[test]
-    // fn test_edges() {
-    //     let terms: Vec<(String, Type)> = vec!
-    //       // 1: Nat
-    //       [ (String::from("1"), t_nat())
-    //       // 1: Int
-    //       , (String::from("1"), t_int())
-    //       // f: Nat -> Int
-    //       , (String::from("f"), t_fun(t_nat(),t_int()))
-    //       // g: a -> b
-    //       , (String::from("g"), t_fun(t_var_0("a"), t_var_0("b")))
-    //       // h: a -> b -> c
-    //       //, Cons::new("h", t_fun(t_var_0("a"), t_fun(t_var_0("b"), t_var_0("c"))))
-    //       ];
-
-    //     let morph_schemes = morph_schemes_from_cons(&cat_cons(terms));
-
-
-    //     // MorphismsBF from Nat
-    //     let n = t_nat();
-    //     let res = morphisms_from_source(&n, &morph_schemes);
-    //     let expect = vec![
-    //         // Applying function terms to n
-    //         Morphism::new("f", Data(0), t_nat(), t_int()),
-    //         Morphism::new("g", Data(1), t_nat(), t_var_0("b")),
-    //         //Morphism::new("h", t_nat(), t_fun(t_var_0("b"), t_var_0("c"))),
-    //         // Applying n to terms (None)
-    //     ];
-    //     assert_eq!(res, expect,
-    //         "\nnode: {} \nMorphSchemes: {} \nleft: {} \nright: {}",
-    //         n,
-    //         vec_to_string(&morph_schemes, "\n"),
-    //         vec_to_string(&res, "\n" ),
-    //         vec_to_string(&expect, "\n" )
-    //     );
-
-    //     // MorphismsBF from Identity morphism a -> a.
-    //     let n = t_fun(t_var_0("a"), t_var_0("a"));
-    //     let res = morphisms_from_source(&n, &morph_schemes);
-    //     let expect =
-    //         vec![
-    //              // Applying n to terms
-    //              Morphism::new("&1", Data(0), t_fun(t_nat(), t_nat()), t_nat()),
-    //              Morphism::new("&1", Data(0), t_fun(t_int(), t_int()), t_int()),
-    //              Morphism::new("&f", Data(0),
-    //                  t_fun(
-    //                      t_fun(t_nat(), t_int()),
-    //                      t_fun(t_nat(), t_int())),
-    //                  t_fun(t_nat(), t_int())),
-    //              Morphism::new("&f.<", Data(0),
-    //                  t_fun(t_int(), t_int()),
-    //                  t_fun(t_nat(), t_int())),
-    //              Morphism::new("&g", Data(0),
-    //                  t_fun(
-    //                      t_fun(t_var_0("b"), t_var_0("c")),
-    //                      t_fun(t_var_0("b"), t_var_0("c"))),
-    //                  t_fun(t_var_0("b"), t_var_0("c"))),
-    //              Morphism::new("&g.<", Data(0),
-    //                  t_fun(t_var_0("a"), t_var_0("a")),
-    //                  t_fun(t_var_0("d"), t_var_0("a"))),
-    //              // Applying function terms to n
-    //              Morphism::new("g", Data(0), t_fun(t_var_0("a"), t_var_0("a")), t_var_0("c")),
-    //          ];
-    //     assert_eq!(res, expect,
-    //         "\nnode: {} \nMorphSchemes: {} \nleft: {} \nright: {}",
-    //         n,
-    //         vec_to_string(&morph_schemes, "\n"),
-    //         vec_to_string(&res, "\n" ),
-    //         vec_to_string(&expect, "\n" )
-    //     );
-
-    //     // MorphismsBF from a -> b
-    //     let n = t_fun(t_var_0("a"), t_var_0("b"));
-    //     let res = morphisms_from_source(&n, &morph_schemes);
-    //     let expect =
-    //         vec![
-    //              Morphism::new("&1", Data(0), t_fun(t_nat(), t_var_0("b")), t_var_0("b")),
-    //              Morphism::new("&1", Data(0), t_fun(t_int(), t_var_0("b")), t_var_0("b")),
-    //              Morphism::new("&f", Data(0),
-    //                  t_fun(
-    //                      t_fun(t_nat(), t_int()),
-    //                      t_var_0("b")),
-    //                  t_var_0("b")),
-    //              Morphism::new("&f.<", Data(0),
-    //                  t_fun(t_int(), t_var_0("b")),
-    //                  t_fun(t_nat(), t_var_0("b"))),
-    //              Morphism::new("&g", Data(0),
-    //                  t_fun(
-    //                      t_fun(t_var_0("c"), t_var_0("d")),
-    //                      t_var_0("b")),
-    //                  t_var_0("b")),
-    //              Morphism::new("&g.<", Data(0),
-    //                  t_fun(t_var_0("a"), t_var_0("b")),
-    //                  t_fun(t_var_0("e"), t_var_0("b"))),
-    //              Morphism::new("g", Data(0), t_fun(t_var_0("a"), t_var_0("b")), t_var_0("d")),
-    //          ];
-    //     assert_eq!(res, expect,
-    //         "\nnode: {} \nMorphSchemes: {} \nleft: {} \nright: {}",
-    //         n,
-    //         vec_to_string(&morph_schemes, "\n"),
-    //         vec_to_string(&res, "\n" ),
-    //         vec_to_string(&expect, "\n" )
-    //     );
-
-    //     // MorphismsBF from Int-> Int
-    //     let n = t_fun(t_int(), t_int());
-    //     let res = morphisms_from_source(&n, &morph_schemes);
-    //     let expect =
-    //         vec![
-    //              Morphism::new("&1", Data(0), t_fun(t_int(), t_int()), t_int()),
-    //              Morphism::new("&f.<", Data(0),
-    //                  t_fun(t_int(), t_int()),
-    //                  t_fun(t_nat(), t_int())),
-    //              Morphism::new("&g.<", Data(0),
-    //                  t_fun(t_int(), t_int()),
-    //                  t_fun(t_var_0("c"), t_int())),
-    //              Morphism::new("g", Data(0), t_fun(t_int(), t_int()), t_var_0("b")),
-    //          ];
-    //     assert_eq!(res, expect,
-    //         "\nnode: {} \nMorphSchemes: {} \nleft: {} \nright: {}",
-    //         n,
-    //         vec_to_string(&morph_schemes, "\n"),
-    //         vec_to_string(&res, "\n" ),
-    //         vec_to_string(&expect, "\n" )
-    //     );
-    // }
 }
 

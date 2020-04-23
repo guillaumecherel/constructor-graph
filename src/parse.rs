@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-//use crate::cons::{Cons};
-
 use std::fmt;
 use std::vec::Vec;
 use std::collections::HashSet;
@@ -8,6 +5,7 @@ use std::str::Chars;
 use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
+use crate::util;
 use crate::type_sy::{Type};
 use crate::type_sy::{t_fun, t_con, t_var_0, t_param, arity};
 use crate::template::{Template, TemplateBit};
@@ -578,16 +576,13 @@ impl<T> fmt::Display for State<T>
 where T: Iterator<Item = char>
 {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    write!(f, "State ({}, {}) buffer=[",
-                          self.current_line, self.current_col)?;
-                    for c in self.buffer.iter() {
-                            write!(f, "'{}', ", c)?;
-                    }
-                    write!(f, "] buf_pos={} checkpoints=[", self.buf_pos)?;
-                    for i in self.checkpoints.iter() {
-                            write!(f, "{}, ", i)?;
-                    }
-                    write!(f, "]")?;
+                    write!(f, "State ({}, {}) buffer={} buf_pos={} checkpoints={}",
+                          self.current_line,
+                          self.current_col,
+                          util::vec_to_string(&self.buffer, ","),
+                          self.buf_pos,
+                          util::vec_to_string(&self.checkpoints, ","),
+                          )?;
 
                     Ok(())
         }

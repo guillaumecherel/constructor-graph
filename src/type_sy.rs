@@ -9,8 +9,6 @@
 // mpj@cse.ogi.edu
 // Version of November 23, 2000.
 
-#![allow(dead_code)]
-
 use std::vec::Vec;
 use std::collections::VecDeque;
 use std::collections::HashMap;
@@ -123,26 +121,42 @@ impl fmt::Display for Type {
 
 //// Predefined types ////
 
+
 //  tUnit    = TCon (Tycon "()" Star)
+#[allow(dead_code)]
 pub fn t_unit() -> Type {t_con("()")}
+
 //  tChar    = TCon (Tycon "Char" Star)
+#[allow(dead_code)]
 pub fn t_char() -> Type {t_con("Char")}
+
 //  t_integer = TCon (Tycon "Integer" Star)
+#[allow(dead_code)]
 pub fn t_integer() -> Type {t_con("Integer")}
+
 //  t_int = TCon (Tycon "Int" Star)
+#[allow(dead_code)]
 pub fn t_int() -> Type {t_con("Int")}
+
 //  t_nat = TCon (Tycon "Nat" Star)
+#[allow(dead_code)]
 pub fn t_nat() -> Type {t_con("Natural")}
+
 //  tDouble  = TCon (Tycon "Double" Star)
+#[allow(dead_code)]
 pub fn t_double() -> Type {t_con("Double")}
+
 //  tList    = TCon (Tycon "[]" (Kfun Star Star))
+#[allow(dead_code)]
 pub fn t_list() -> Type {
     Type::TCon(Tycon(
         String::from("[]"),
         Kind::KFun(
             Box::new(Kind::Star),
             Box::new(Kind::Star))))}
+
 //  tArrow   = TCon (Tycon "(->)" (Kfun Star (Kfun Star Star)))
+#[allow(dead_code)]
 pub fn t_arrow() -> Type {
     Type::TCon(Tycon(
         String::from("->"),
@@ -151,7 +165,9 @@ pub fn t_arrow() -> Type {
             Box::new(Kind::KFun(
                 Box::new(Kind::Star),
                 Box::new(Kind::Star))))))}
+
 //  tTuple2  = TCon (Tycon "(,)" (Kfun Star (Kfun Star Star)))
+#[allow(dead_code)]
 pub fn t_tuple_2() -> Type {
     Type::TCon(Tycon(
         String::from("(,)"),
@@ -190,11 +206,13 @@ pub fn t_param(name: &str, xs: &[Type]) -> Type {
 }
 
 // List
+#[allow(dead_code)]
 pub fn t_list_t(t: Type) -> Type {
    Type::TAp(Box::new(t_list()), Box::new(t))
 }
 
 // Tuple
+#[allow(dead_code)]
 pub fn t_pair(a: Type, b: Type) -> Type {
    Type::TAp(
        Box::new(Type::TAp(
@@ -205,6 +223,7 @@ pub fn t_pair(a: Type, b: Type) -> Type {
 }
 
 // Function
+#[allow(dead_code)]
 pub fn t_fun(a: Type, b: Type) -> Type {
    Type::TAp(
        Box::new(Type::TAp(
@@ -215,6 +234,7 @@ pub fn t_fun(a: Type, b: Type) -> Type {
 }
 
 // Function or Variable
+#[allow(dead_code)]
 pub fn t_fun_seq(xs: &[Type]) -> Type {
     match xs {
         [] => panic!("Vec xs should have at least 2 items"),
@@ -328,11 +348,6 @@ impl Subst {
         let mut hm = HashMap::new();
         hm.insert(u, t);
         Subst(hm)
-    }
-
-    fn insert(&mut self, u: Tyvar, t: Type) {
-        let mut hm = HashMap::new();
-        hm.insert(u, t);
     }
 
     fn get(&self, u: &Tyvar) -> Option<&Type> {
@@ -457,18 +472,6 @@ impl<'a> VarNames<'a> {
             value: String::from(""),
             excluded: names.collect(),
         }
-    }
-
-    pub fn exclude(mut self, name: &'a String) -> VarNames<'a> {
-        self.excluded.insert(name);
-        self
-    }
-
-    pub fn exclude_all<T>(mut self, names: T) -> VarNames<'a>
-        where T: Iterator<Item = &'a String>
-    {
-        self.excluded.extend(names);
-        self
     }
 }
 
@@ -624,75 +627,6 @@ mod tests {
         let result : Result<Subst, String> = mgu(&t1, &t2);
         assert!( result.is_err() );
     }
-
-    // #[test]
-    // fn test_bind() {
-    //     let t = Type::Nat;
-    //     let bindings: HashMap<Type, Type> = vec![(Type::var("a"), Type::var("b"))]
-    //         .into_iter().collect();
-    //     let result = t.clone().bind(bindings);
-    //     assert_eq!(result, t);
-
-    //     let t = Type::var("a");
-    //     let bindings: HashMap<Type, Type> = vec![(Type::var("a"), Type::var("b"))]
-    //         .into_iter().collect();
-    //     let result = t.bind(bindings);
-    //     let expect = Type::var("b");
-    //     assert_eq!(result, expect);
-
-    //     let t = Type::funtyvar0(Type::var("a"), Type::var("b"));
-    //     let bindings: HashMap<Type, Type> = vec![(Type::var("a"), Type::var("b"))]
-    //         .into_iter().collect();
-    //     let result = t.bind(bindings);
-    //     let expect = Type::fun(Type::var("b"), Type::var("a"));
-    //     assert_eq!(result, expect);
-
-    //     let t = Type::fun(
-    //         Type::fun(Type::var("a"), Type::var("b")),
-    //         Type::var("b"));
-    //     let bindings: HashMap<Type, Type> = vec![(Type::var("a"), Type::var("b"))]
-    //         .into_iter().collect();
-    //     let result = t.bind(bindings);
-    //     let expect = Type::fun(
-    //         Type::fun(Type::var("b"), Type::var("a")),
-    //         Type::var("a"));
-    //     assert_eq!(result, expect);
-
-    //     let t = Type::fun(
-    //         Type::fun(Type::var("a"), Type::var("b")),
-    //         Type::var("c"));
-    //     let bindings: HashMap<Type, Type> = vec![(Type::var("a"), Type::var("b"))]
-    //         .into_iter().collect();
-    //     let result = t.bind(bindings);
-    //     let expect = Type::fun(
-    //         Type::fun(Type::var("b"), Type::var("a")),
-    //         Type::var("c"));
-    //     assert_eq!(result, expect);
-
-    //     let t = Type::fun(
-    //         Type::var("a"),
-    //         Type::fun(Type::var("b"), Type::var("c")));
-    //     let bindings: HashMap<Type, Type> = vec![(Type::var("a"), Type::var("b"))]
-    //         .into_iter().collect();
-    //     let result = t.bind(bindings);
-    //     let expect = Type::fun(
-    //         Type::var("b"),
-    //         Type::fun(Type::var("a"), Type::var("c")));
-    //     assert_eq!(result, expect);
-
-    //     let t = Type::fun(
-    //         Type::fun(Type::var("d"), Type::var("b")),
-    //         Type::fun(Type::var("b"), Type::var("c")));
-    //     let bindings: HashMap<Type, Type> =
-    //         vec![(Type::var("c"), Type::var("d")),
-    //              (Type::var("b"), Type::var("c"))]
-    //         .into_iter().collect();
-    //     let result = t.bind(bindings);
-    //     let expect = Type::fun(
-    //         Type::fun(Type::var("a"), Type::var("c")),
-    //         Type::fun(Type::var("c"), Type::var("d")));
-    //     assert_eq!(result, expect);
-    // }
 
     #[test]
     fn test_quantify() {

@@ -170,9 +170,9 @@ Let's define the function `using` that takes a function of arity n and turns it 
 
 ```
 using f = & f               if n = 0 
-        & f . comp        if n = 1 
-        & f . comp . comp if n = 2
-        etc.
+          & f . comp        if n = 1 
+          & f . comp . comp if n = 2
+          etc.
 ```
 
 

@@ -47,7 +47,7 @@ impl Default for OutputType {
 fn main() {
     let args = Cli::from_args();
     let predef_cons = cons::predef_cons();
-    let input_cons = match cons_from_file("openmole.cons") {
+    let input_cons = match cons_from_file("dsl/openmole.cons") {
         Err(parse_err) => {
             eprintln!("Could not parse constructor input file.");
             eprintln!("Parse Error: {}", parse_err);

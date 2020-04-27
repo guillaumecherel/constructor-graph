@@ -13,7 +13,7 @@ type `b` is written `f: a -> b`. Function  application is written without
 parentheses; `f` applied to the arguments 1, 2 and 3 is written: `f 1 2 3`. 
 Function are curried, such that a  function of `n` arguments can be written 
 `f: a1 -> a2 -> ... -> an -> b` which  is equivalent to 
-`f: a1 -> (a2 -> (... -> (an -> b)...))`: a function that returns a function that returns a function ... that returns a value of type `b`. This naturally leads to partial function application; a function  
+`f: a1 -> (a2 -> (... -> (an -> b)...))`: a function that returns a function that returns a function ... that returns a value of type `b`. This naturally leads to partial function application; a function
 `g: Integer -> Integer -> Integer` applied  only to 1 argument gives a function
 that takes one integer and returns an integers: `g 1: Integer -> Integer`.
 
@@ -49,7 +49,7 @@ norm: Double -> Double -> Double -> Double
 norm x y z = (x^2 + y^2 + z^2) / 3
 ```
 
-We can compute the minimum average of the norm of the vectors `(1, 2, 3)` and `(4, 5, 6)` like:
+We can compute the minimum average of the norm of the vectors `(1, 2, 3)` and `(4, 5, 6)` like (recall that `.` is the standard function composition operator):
 
 ```
 using min . using norm . using 1 . using 2 . using 3 

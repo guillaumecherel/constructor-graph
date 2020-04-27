@@ -180,10 +180,11 @@ using f = & f               if n = 0
 Constructors
 ============
 
-The constructors are constituted of the functions of the DSL and
-special constructors. The DSL is specified by the user (e.g. the
-file <dsl/openmole.cons>). The input file parser is implemented in
-<src/parse.rs>. The special constructors are functions that trigger some actions such as asking for user input. Currently, they are:
+The functions of the DSL and the special constructors form the
+*constructors*. The DSL is specified by the user (e.g. the file
+<dsl/openmole.cons>). The input file parser is implemented in
+<src/parse.rs>. The special constructors are functions that trigger some
+actions such as asking for user input. Currently, they are:
 
 - `ReadInt: Int`
 - `ReadDouble: Double`

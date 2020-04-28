@@ -1,12 +1,22 @@
 Motivation
 ==========
 
-We design domain specific languages (DSL) to offers users flexibility and expressivity and the ability to create solutions to a wide range of problems within a certain domain. For example, OpenMOLE proposes a DSL for the domain of simulation experiments. The DSL, however, is also a source of a hindrance because users, experts of the targetted domain but not necessarily experienced computer programmers, must deal with the complexity of computer 
-programming: syntax, type and logic errors, learning the language and developing experience with it.
+We design domain specific languages (DSL) to offers users flexibility
+and expressivity and the ability to create solutions to a wide range of
+problems within a certain domain. For example, OpenMOLE proposes a DSL
+for the domain of simulation experiments. The DSL, however, is also a
+source of a hindrance because users, experts of the targetted domain
+but not necessarily experienced computer programmers, must deal with
+the complexity of computer programming: syntax, type and logic errors,
+learning the language and developing experience with it.
 
 The purpose of this project is to propose an alternative way to make
-users interact with a DSL that does not require them to write code while
-retaining the expressiveness and flexibility of the full fledged DSL. The remaining of this section sketches the approach. It assumes some familiarity of the readers with types and functions (e.g. function composition) and that the DSL of interest is expressed as a set of functions.
+users interact with a DSL that does not require them to write code
+while retaining the expressiveness and flexibility of the full fledged
+DSL. The remaining of this section sketches the approach. It assumes
+some familiarity of the readers with types and functions (e.g. function
+composition) and that the DSL of interest is expressed as a set of
+functions.
 
 Notation: a function `f` that takes a value of type `a` and returns a value of 
 type `b` is written `f: a -> b`. Function  application is written without 
@@ -282,6 +292,4 @@ From DSL to a script
 
 In the input DSL, each function defines a piece of text that assembled together can realize a full DSL program. At the end of the interaction with the user, the program reduces the path to the DSL following the [elimination rules][From paths to the DSL] and interprets the resulting applications of
 DSL functions to produce and print the final script.
-
-
 

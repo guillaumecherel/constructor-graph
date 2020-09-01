@@ -11,6 +11,18 @@ being constructed. Thanks to constraining the expression building with type
 information, the final expression is guaranteed to type check.
 
 
+Usage
+=====
+
+Install `cargo`
+
+    $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+and run
+
+    $ cargo run
+
+
 Motivation
 ==========
 

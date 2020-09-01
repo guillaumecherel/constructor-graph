@@ -1,13 +1,26 @@
+Intro
+=====
+
+This program illustrates that we can guide domain specific language (DSL) users 
+through the process of building complex expressions using function types.
+It takes as input a list of functions constituting the DSL and their types.
+Then, it iteratively proposes the user a list of functions to chose from until a
+complete program is constructed. At each step, the program gives the user a
+choice among the DSL functions whose types fit in the expression that is
+being constructed. Thanks to constraining the expression building with type
+information, the final expression is guaranteed to type check.
+
+
 Motivation
 ==========
 
-We design domain specific languages (DSL) to offers users flexibility
-and expressivity and the ability to create solutions to a wide range of
-problems within a certain domain. For example, OpenMOLE proposes a DSL
-for the domain of simulation experiments. The DSL, however, is also a
-source of a hindrance because users, experts of the targetted domain
-but not necessarily experienced computer programmers, must deal with
-the complexity of computer programming: syntax, type and logic errors,
+We design domain specific languages (DSL) to offer users flexibility and
+expressivity and the ability to create solutions to a wide range of problems
+within a certain domain. For example, the software [OpenMOLE](openmole.org) is a
+simulation platform which proposes a DSL to build simulation experiments. The
+DSL, however, is also a source of a hindrance because users, experts of the
+targetted domain but not necessarily experienced computer programmers, must deal
+with the complexity of computer programming: syntax, type and logic errors,
 learning the language and developing experience with it.
 
 The purpose of this project is to propose an alternative way to make
